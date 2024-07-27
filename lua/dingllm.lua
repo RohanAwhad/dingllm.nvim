@@ -124,6 +124,15 @@ local function get_prompt(opts)
     prompt = M.get_lines_until_cursor()
   end
 
+  local function count_lines(s)
+    local count = 0
+    for _ in string.gmatch(s, "[^\r\n]+") do
+      count = count + 1
+    end
+    return count
+  end
+  print("Number of Lines in Prompt:", count_lines(prompt))
+
   return prompt
 end
 
