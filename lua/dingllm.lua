@@ -83,7 +83,7 @@ function M.make_openai_spec_curl_args(opts, prompt, system_prompt)
 		model = opts.model,
 		temperature = 0.7,
 		stream = true,
-		max_tokens = 128,
+		max_tokens = 1024,
 		stop_tokens = { "\n\n" },
 	}
 	local args = { "-N", "-X", "POST", "-H", "Content-Type: application/json", "-d", vim.json.encode(data) }
