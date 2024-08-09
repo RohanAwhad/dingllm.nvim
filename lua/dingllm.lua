@@ -81,9 +81,9 @@ function M.make_openai_spec_curl_args(opts, prompt, system_prompt)
 	local data = {
 		messages = { { role = "system", content = system_prompt }, { role = "user", content = prompt } },
 		model = opts.model,
-		temperature = 0.7,
+		temperature = 0.8,
 		stream = true,
-		max_tokens = 1024,
+		max_tokens = 4096,
 	}
 	local args = { "-N", "-X", "POST", "-H", "Content-Type: application/json", "-d", vim.json.encode(data) }
 	if api_key then
