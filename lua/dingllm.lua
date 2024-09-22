@@ -205,7 +205,7 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 
 	vim.api.nvim_create_autocmd("User", {
 		group = group,
-		pattern = "DING_LLM_Escape",
+		pattern = "DING_LLM_ESCAPE",
 		callback = function()
 			if active_job then
 				active_job:shutdown()
@@ -215,7 +215,7 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 		end,
 	})
 
-	vim.api.nvim_set_keymap("n", "<Esc>", ":doautocmd User DING_LLM_Escape<CR>", { noremap = true, silent = true })
+	vim.api.nvim_set_keymap("n", "<Esc>", ":doautocmd User DING_LLM_ESCAPE<CR>", { noremap = true, silent = true })
 	return active_job
 end
 
