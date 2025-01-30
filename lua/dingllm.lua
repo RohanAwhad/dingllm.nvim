@@ -81,9 +81,9 @@ function M.make_openai_spec_curl_args(opts, prompt, system_prompt)
 	local data = {
 		messages = { { role = "system", content = system_prompt }, { role = "user", content = prompt } },
 		model = opts.model,
-		temperature = 0.8,
+		temperature = 0.7,
 		stream = true,
-		max_tokens = 4096,
+		max_tokens = opts.max_tokens or 4096,
 	}
 	local args = { "-N", "-X", "POST", "-H", "Content-Type: application/json", "-d", vim.json.encode(data) }
 	if api_key then
@@ -156,6 +156,21 @@ function M.handle_openai_spec_data(data_stream)
 			local content = json.choices[1].delta.content
 			if content then
 				write_string_at_cursor(content)
+			end
+		end
+	end
+end
+
+function M.handle_deepseek_reasoner_spec_data(data_stream)
+	if data_stream:match('"delta":') then
+		local json = vim.json.decode(data_stream)
+		if json.choices and json.choices[1] and json.choices[1].delta then
+			local content = json.choices[1].delta.content
+			local reasoning = json.choices[1].delta.reasoning_content
+			if content and type(content) == "string" then
+				write_string_at_cursor(content)
+			elseif reasoning and type(reasoning) == "string" then
+				write_string_at_cursor(reasoning)
 			end
 		end
 	end
