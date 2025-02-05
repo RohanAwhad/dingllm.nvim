@@ -1,6 +1,11 @@
 local M = {}
 local Job = require("plenary.job")
 local sqlite = require("sqlite")
+local ding_path = vim.fn.expand("~/.dingllm")
+
+if vim.fn.isdirectory(ding_path) == 0 then
+	vim.fn.mkdir(ding_path, "p")
+end
 
 local function save_to_db(prompt, output)
 	local db_path = vim.fn.expand("~/.dingllm/calls.db")
