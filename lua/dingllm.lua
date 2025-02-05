@@ -3,7 +3,7 @@ local Job = require("plenary.job")
 local sqlite = require("sqlite")
 
 local function save_to_db(prompt, output)
-	local db_path = vim.fn.expand("~/.dingllm/calls.db")
+	local db_path = vim.fs.normalize("~/.dingllm/calls.db")
 	local db = sqlite.new(db_path)
 
 	-- Create table if not exists
