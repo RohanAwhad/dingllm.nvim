@@ -167,6 +167,7 @@ function M.handle_anthropic_spec_data(data_stream, event_state)
 		local json = vim.json.decode(data_stream)
 		if json.delta and json.delta.text then
 			write_string_at_cursor(json.delta.text)
+			return content
 		end
 	end
 end
@@ -178,6 +179,7 @@ function M.handle_openai_spec_data(data_stream)
 			local content = json.choices[1].delta.content
 			if content then
 				write_string_at_cursor(content)
+				return content
 			end
 		end
 	end
@@ -193,6 +195,7 @@ function M.handle_deepseek_reasoner_spec_data(data_stream)
 				write_string_at_cursor(content)
 			elseif reasoning and type(reasoning) == "string" then
 				write_string_at_cursor(reasoning)
+				return content
 			end
 		end
 	end
@@ -219,7 +222,10 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 		end
 		local data_match = line:match("^data: (.+)$")
 		if data_match then
-			handle_data_fn(data_match, curr_event_state)
+			local content = handle_data_fn(data_match, curr_event_state)
+			if content then
+				return content
+			end
 		end
 	end
 
@@ -232,10 +238,10 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 		command = "curl",
 		args = args,
 		on_stdout = function(_, out)
-			parse_and_call(out)
+			local content = parse_and_call(out)
 			-- Append to full output when content received
-			if out:match("^data:") then
-				full_output = full_output .. (out:match("^data: (.+)$") or "")
+			if content then
+				full_output = full_output .. (content or "")
 			end
 		end,
 		on_stderr = function(_, _) end,
