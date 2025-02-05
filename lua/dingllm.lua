@@ -1,5 +1,29 @@
 local M = {}
 local Job = require("plenary.job")
+local sqlite = require("sqlite")
+
+local function save_to_db(prompt, output)
+	local db_path = vim.fn.expand("~/.dingllm/calls.db")
+	local db = sqlite.new(db_path)
+
+	-- Create table if not exists
+	db:eval([[
+    CREATE TABLE IF NOT EXISTS calls (
+      id INTEGER PRIMARY KEY,
+      prompt TEXT,
+      output TEXT, 
+      created_at INTEGER
+    )
+  ]])
+
+	db:eval(
+		[[
+    INSERT INTO calls (prompt, output, created_at)
+    VALUES (?, ?, ?)
+  ]],
+		{ prompt, output, os.time() }
+	)
+end
 
 local function get_api_key(name)
 	return os.getenv(name)
@@ -180,6 +204,8 @@ local group = vim.api.nvim_create_augroup("DING_LLM_AutoGroup", { clear = true }
 local active_job = nil
 
 function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_data_fn)
+	local full_output = ""
+
 	vim.api.nvim_clear_autocmds({ group = group })
 	local prompt = get_prompt(opts)
 	local system_prompt = opts.system_prompt
@@ -209,10 +235,16 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 		args = args,
 		on_stdout = function(_, out)
 			parse_and_call(out)
+			-- Append to full output when content received
+			if out:match("^data:") then
+				full_output = full_output .. (out:match("^data: (.+)$") or "")
+			end
 		end,
 		on_stderr = function(_, _) end,
 		on_exit = function()
 			active_job = nil
+			-- Save prompt and output to DB
+			save_to_db(prompt, full_output)
 		end,
 	})
 
