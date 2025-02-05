@@ -1,28 +1,20 @@
 local M = {}
 local Job = require("plenary.job")
 local sqlite = require("sqlite")
+local db_path = vim.fs.normalize("~/.dingllm/calls.db")
 
 local function save_to_db(prompt, output)
-	local db_path = vim.fs.normalize("~/.dingllm/calls.db")
 	local db = sqlite.open(db_path)
 
 	-- Create table if not exists
-	db:execute([[
-    CREATE TABLE IF NOT EXISTS calls (
-      id INTEGER PRIMARY KEY,
-      prompt TEXT,
-      output TEXT, 
-      created_at INTEGER
-    )
-  ]])
+	db:sql("CREATE TABLE IF NOT EXISTS calls (id INTEGER PRIMARY KEY, prompt TEXT, output TEXT, created_at INTEGER);")
 
-	db:execute(
-		[[
-    INSERT INTO calls (prompt, output, created_at)
-    VALUES (?, ?, ?)
-  ]],
-		{ prompt, output, os.time() }
-	)
+	db:insert("calls", {
+		prompt = prompt,
+		output = output,
+		created_at = os.time(),
+	})
+	db:close()
 end
 
 local function get_api_key(name)
