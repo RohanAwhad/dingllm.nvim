@@ -7,16 +7,18 @@ if vim.fn.isdirectory(ding_path) == 0 then
 	vim.fn.mkdir(ding_path, "p")
 end
 
-local function save_to_db(prompt, output)
+local function save_to_db(instruction, prompt, output, model)
 	local db_path = vim.fn.expand("~/.dingllm/calls.db")
 	local db = sqlite.new(db_path)
 	db:open()
 	db:eval(
-		[[CREATE TABLE IF NOT EXISTS calls (id INTEGER PRIMARY KEY, prompt TEXT, output TEXT, created_at INTEGER);]]
+		[[CREATE TABLE IF NOT EXISTS calls (id INTEGER PRIMARY KEY, instruction TEXT, input TEXT, output TEXT, model TEXT, created_at INTEGER);]]
 	)
 	db:insert("calls", {
-		prompt = prompt,
+		instruction = instruction,
+		input = prompt,
 		output = output,
+		model = model,
 		created_at = os.time(),
 	})
 
@@ -249,7 +251,7 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 			active_job = nil
 			-- Save prompt and output to DB
 			vim.schedule(function()
-				save_to_db(prompt, full_output)
+				save_to_db(opts.system_prompt, prompt, full_output, opts.model)
 			end)
 		end,
 	})
