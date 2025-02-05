@@ -1,9 +1,9 @@
 local M = {}
 local Job = require("plenary.job")
 local sqlite = require("sqlite")
-local db_path = vim.fs.normalize("~/.dingllm/calls.db")
 
 local function save_to_db(prompt, output)
+	local db_path = vim.fn.expand("~/.dingllm/calls.db")
 	local db = sqlite.open(db_path)
 
 	-- Create table if not exists
@@ -236,7 +236,9 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 		on_exit = function()
 			active_job = nil
 			-- Save prompt and output to DB
-			save_to_db(prompt, full_output)
+			vim.schedule(function()
+				save_to_db(prompt, full_output)
+			end)
 		end,
 	})
 
