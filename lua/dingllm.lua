@@ -4,16 +4,17 @@ local sqlite = require("sqlite")
 
 local function save_to_db(prompt, output)
 	local db_path = vim.fn.expand("~/.dingllm/calls.db")
-	local db = sqlite.open(db_path)
-
-	-- Create table if not exists
-	db:sql("CREATE TABLE IF NOT EXISTS calls (id INTEGER PRIMARY KEY, prompt TEXT, output TEXT, created_at INTEGER);")
-
+	local db = sqlite.new(db_path)
+	db:open()
+	db:eval(
+		[[CREATE TABLE IF NOT EXISTS calls (id INTEGER PRIMARY KEY, prompt TEXT, output TEXT, created_at INTEGER);]]
+	)
 	db:insert("calls", {
 		prompt = prompt,
 		output = output,
 		created_at = os.time(),
 	})
+
 	db:close()
 end
 
