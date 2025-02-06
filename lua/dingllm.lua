@@ -8,6 +8,9 @@ if vim.fn.isdirectory(ding_path) == 0 then
 end
 
 local function save_to_db(instruction, prompt, output, model)
+	-- explicitly type cast output to str
+	output = tostring(output)
+
 	local db_path = vim.fn.expand("~/.dingllm/calls.db")
 	local db = sqlite.new(db_path)
 	db:open()
