@@ -8,23 +8,21 @@ if vim.fn.isdirectory(ding_path) == 0 then
 end
 
 local function save_to_db(instruction, prompt, output, model)
-	-- explicitly type cast output to str
-	output = tostring("\n" .. output)
-
 	local db_path = vim.fn.expand("~/.dingllm/calls.db")
 	local db = sqlite.new(db_path)
 	db:open()
 	db:eval(
 		[[CREATE TABLE IF NOT EXISTS calls (id INTEGER PRIMARY KEY, instruction TEXT, input TEXT, output TEXT, model TEXT, created_at INTEGER);]]
 	)
-	db:insert("calls", {
-		instruction = instruction,
-		input = prompt,
-		output = output,
-		model = model,
-		created_at = os.time(),
-	})
-
+	local ok, err = pcall(function()
+		db:insert("calls", {
+			instruction = instruction,
+			input = prompt,
+			output = output,
+			model = model,
+			created_at = os.time(),
+		})
+	end)
 	db:close()
 end
 
