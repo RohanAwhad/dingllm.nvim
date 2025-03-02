@@ -197,9 +197,10 @@ function M.handle_deepseek_reasoner_spec_data(data_stream)
 			local reasoning = json.choices[1].delta.reasoning_content
 			if content and type(content) == "string" then
 				write_string_at_cursor(content)
+				return content
 			elseif reasoning and type(reasoning) == "string" then
 				write_string_at_cursor(reasoning)
-				return content
+				return reasoning
 			end
 		end
 	end
