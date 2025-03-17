@@ -40,6 +40,17 @@ Add your API keys to your env (export it in zshrc or bashrc)
 					replace = false,
 				}, dingllm.make_openai_spec_curl_args, dingllm.handle_openai_spec_data)
 			end
+			local function ollama_generate_with_context()
+				dingllm.invoke_llm_and_stream_into_editor({
+					url = "http://localhost:11434/v1/chat/completions",
+					model = "qwen2.5-coder:0.5b",
+					api_key_name = "ollama",
+					system_prompt = generation_system_prompt,
+					replace = false,
+					build_context = true,
+				}, dingllm.make_openai_spec_curl_args, dingllm.handle_openai_spec_data)
+			end
+
 
 			local function ollama_replace()
 				dingllm.invoke_llm_and_stream_into_editor({
@@ -155,6 +166,7 @@ Add your API keys to your env (export it in zshrc or bashrc)
 			vim.keymap.set({ "n", "v" }, "<leader>th", deepseek_help, { desc = "llm deepseek help" })
 
 			vim.keymap.set({ "n", "v" }, "<leader>k", ollama_generate, { desc = "llm ollama generate" })
+			vim.keymap.set({ "n", "v" }, "<leader>kc", ollama_generate_with_context, { desc = "llm ollama generate with context" })
 			vim.keymap.set({ "n", "v" }, "<leader>kr", ollama_replace, { desc = "llm ollama replace" })
 			vim.keymap.set({ "n", "v" }, "<leader>kh", ollama_help, { desc = "llm ollama_help" })
 

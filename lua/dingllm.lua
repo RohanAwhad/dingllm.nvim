@@ -136,6 +136,40 @@ local function write_string_at_cursor(str)
 	end)
 end
 
+local function build_context(prompt)
+	local url = "http://localhost:9999/"
+	local data = {
+		prompt = prompt,
+	}
+
+	local job = Job:new({
+		command = "curl",
+		args = {
+			"-X",
+			"POST",
+			url,
+			"-H",
+			"accept: text/plain",
+			"-H",
+			"Content-Type: application/json",
+			"-d",
+			vim.json.encode(data),
+		},
+		on_exit = function(j, return_val)
+			if return_val ~= 0 then
+				print("Error building context")
+				return ""
+			end
+
+			local result = table.concat(j:result(), "\n")
+			return result
+		end,
+	})
+
+	local result = job:sync()
+	return table.concat(result, "\n")
+end
+
 local function get_prompt(opts)
 	local replace = opts.replace
 	local visual_lines = M.get_visual_selection()
@@ -161,6 +195,12 @@ local function get_prompt(opts)
 		return count
 	end
 	print("Number of Lines in Prompt:", count_lines(prompt))
+
+	if opts.build_context then
+		local ctx = build_context(prompt)
+		print("Number of Lines in Context:", count_lines(ctx))
+		prompt = ctx .. prompt
+	end
 
 	return prompt
 end
