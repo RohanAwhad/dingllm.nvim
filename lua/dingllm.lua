@@ -155,6 +155,7 @@ local function build_context(prompt)
 			"-d",
 			vim.json.encode(data),
 		},
+		timeout = 30000, -- Increase timeout to 30 seconds
 		on_exit = function(j, return_val)
 			if return_val ~= 0 then
 				print("Error building context")
@@ -166,7 +167,7 @@ local function build_context(prompt)
 		end,
 	})
 
-	local result = job:sync()
+	local result = job:sync(30000)
 	return table.concat(result, "\n")
 end
 
