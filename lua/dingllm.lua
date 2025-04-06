@@ -119,6 +119,25 @@ function M.make_openai_spec_curl_args(opts, prompt, system_prompt)
 	return args
 end
 
+-- TODO: in future implement API key logic
+function M.make_research_spec_curl_args(opts, prompt)
+	local url = opts.url
+	local test
+	if opts.test then
+		test = opts.test
+	else
+		test = false
+	end
+	local data = {
+		query = prompt,
+		model = opts.model,
+		test = test,
+	}
+	local args = { "-N", "-X", "POST", "-H", "Content-Type: application/json", "-d", vim.json.encode(data) }
+	table.insert(args, url)
+	return args
+end
+
 local function write_string_at_cursor(str)
 	vim.schedule(function()
 		local current_window = vim.api.nvim_get_current_win()
@@ -230,6 +249,19 @@ function M.handle_openai_spec_data(data_stream)
 	end
 end
 
+function M.handle_research_spec_data(data_stream)
+	if data_stream:match('"delta":') then
+		local json = vim.json.decode(data_stream)
+		if json.choices and json.choices[1] and json.choices[1].delta then
+			local content = json.choices[1].delta.content
+			if content then
+				write_string_at_cursor(content)
+				return content
+			end
+		end
+	end
+end
+
 function M.handle_deepseek_reasoner_spec_data(data_stream)
 	if data_stream:match('"delta":') then
 		local json = vim.json.decode(data_stream)
@@ -255,8 +287,10 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 
 	vim.api.nvim_clear_autocmds({ group = group })
 	local prompt = get_prompt(opts)
-	local system_prompt = opts.system_prompt
-		or "You are a tsundere uwu anime. Yell at me for not setting my configuration for my llm plugin correctly"
+	if not opts.research then
+		local system_prompt = opts.system_prompt
+			or "You are a tsundere uwu anime. Yell at me for not setting my configuration for my llm plugin correctly"
+	end
 	local args = make_curl_args_fn(opts, prompt, system_prompt)
 	local curr_event_state = nil
 
