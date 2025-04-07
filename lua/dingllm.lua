@@ -287,8 +287,9 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 
 	vim.api.nvim_clear_autocmds({ group = group })
 	local prompt = get_prompt(opts)
+	local system_prompt
 	if not opts.research then
-		local system_prompt = opts.system_prompt
+		system_prompt = opts.system_prompt
 			or "You are a tsundere uwu anime. Yell at me for not setting my configuration for my llm plugin correctly"
 	end
 	local args = make_curl_args_fn(opts, prompt, system_prompt)
