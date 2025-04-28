@@ -163,7 +163,7 @@ local function write_string_at_cursor(str, cursor_window, cursor_position)
 		local line = vim.api.nvim_buf_get_lines(buffer, mark_row, mark_row + 1, false)[1] or ""
 
 		local lines = vim.split(str, "\n")
-		vim.cmd("undojoin")
+		pcall(vim.cmd, "undojoin")
 
 		if #lines == 1 then
 			-- Single line insertion
