@@ -30,7 +30,7 @@ local function get_api_key(name)
 	return os.getenv(name)
 end
 
-function M.context_files()
+function M.build_context()
 	-- Define the path to files.txt
 	local files_txt_path = vim.fn.getcwd() .. "/.dingllm/files.txt"
 
@@ -249,41 +249,6 @@ local function write_string_at_cursor(str, cursor_window, cursor_position)
 	end)
 end
 
-local function build_context(prompt)
-	local url = "http://localhost:9999/"
-	local data = {
-		prompt = prompt,
-	}
-
-	local job = Job:new({
-		command = "curl",
-		args = {
-			"-X",
-			"POST",
-			url,
-			"-H",
-			"accept: text/plain",
-			"-H",
-			"Content-Type: application/json",
-			"-d",
-			vim.json.encode(data),
-		},
-		timeout = 30000, -- Increase timeout to 30 seconds
-		on_exit = function(j, return_val)
-			if return_val ~= 0 then
-				print("Error building context")
-				return ""
-			end
-
-			local result = table.concat(j:result(), "\n")
-			return result
-		end,
-	})
-
-	local result = job:sync(30000)
-	return table.concat(result, "\n")
-end
-
 local function get_prompt(opts)
 	local replace = opts.replace
 	local visual_lines = M.get_visual_selection()
@@ -300,6 +265,10 @@ local function get_prompt(opts)
 		end
 	else
 		prompt = M.get_lines_until_cursor()
+		local context = M.build_context()
+		if context and context ~= "" then
+			prompt = context .. "\n\n" .. prompt
+		end
 	end
 
 	local function count_lines(s)
@@ -310,26 +279,7 @@ local function get_prompt(opts)
 		return count
 	end
 	print("Number of Lines in Prompt:", count_lines(prompt))
-
-	-- First include context files
-	local context = M.context_files()
-	local final_prompt = ""
-
-	if context and context ~= "" then
-		final_prompt = context .. "\n\n" .. prompt
-		print("Number of Lines in Context Files:", count_lines(context))
-	else
-		final_prompt = prompt
-	end
-
-	-- If build_context is enabled, add additional context
-	if opts.build_context then
-		local ctx = build_context(final_prompt)
-		print("Number of Lines in Built Context:", count_lines(ctx))
-		final_prompt = ctx .. final_prompt
-	end
-
-	return final_prompt
+	return prompt
 end
 
 function M.handle_anthropic_spec_data(data_stream, cursor_window, cursor_position, event_state)
