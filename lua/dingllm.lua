@@ -30,6 +30,64 @@ local function get_api_key(name)
 	return os.getenv(name)
 end
 
+function M.context_files()
+	-- Define the path to files.txt
+	local files_txt_path = vim.fn.getcwd() .. "/.dingllm/files.txt"
+
+	-- Read the contents of files.txt
+	local file = io.open(files_txt_path, "r")
+	if not file then
+		return ""
+	end
+
+	-- Read all lines from files.txt
+	local file_paths = {}
+	for line in file:lines() do
+		-- Trim whitespace and ignore empty lines
+		line = line:match("^%s*(.-)%s*$")
+		if line ~= "" then
+			table.insert(file_paths, line)
+		end
+	end
+	file:close()
+
+	-- Concatenate contents of each file
+	local result = {}
+	for _, path in ipairs(file_paths) do
+		-- Resolve relative paths based on current working directory
+		local full_path = path
+		if not path:match("^/") then
+			full_path = vim.fn.getcwd() .. "/" .. path
+		end
+
+		local content_file = io.open(full_path, "r")
+		if content_file then
+			local content = content_file:read("*all")
+			table.insert(
+				result,
+				string.format(
+					"<file>\n<filepath>%s</filepath>\n<file_content>%s</file_content>\n</file>",
+					path,
+					content
+				)
+			)
+			content_file:close()
+		else
+			table.insert(
+				result,
+				string.format(
+					"<file>\n<filepath>%s</filepath>\n<file_content>Error: Could not read file %s</file_content>\n</file>",
+					path,
+					path
+				)
+			)
+		end
+	end
+
+	-- Return concatenated string
+	return table.concat(result, "\n")
+end
+
 function M.get_lines_until_cursor()
 	local current_buffer = vim.api.nvim_get_current_buf()
 	local current_window = vim.api.nvim_get_current_win()
@@ -231,6 +289,7 @@ local function get_prompt(opts)
 	local visual_lines = M.get_visual_selection()
 	local prompt = ""
 
+	-- Get text from prompt sources
 	if visual_lines then
 		prompt = table.concat(visual_lines, "\n")
 		if replace then
@@ -252,13 +311,25 @@ local function get_prompt(opts)
 	end
 	print("Number of Lines in Prompt:", count_lines(prompt))
 
-	if opts.build_context then
-		local ctx = build_context(prompt)
-		print("Number of Lines in Context:", count_lines(ctx))
-		prompt = ctx .. prompt
+	-- First include context files
+	local context = M.context_files()
+	local final_prompt = ""
+
+	if context and context ~= "" then
+		final_prompt = context .. "\n\n" .. prompt
+		print("Number of Lines in Context Files:", count_lines(context))
+	else
+		final_prompt = prompt
 	end
 
-	return prompt
+	-- If build_context is enabled, add additional context
+	if opts.build_context then
+		local ctx = build_context(final_prompt)
+		print("Number of Lines in Built Context:", count_lines(ctx))
+		final_prompt = ctx .. final_prompt
+	end
+
+	return final_prompt
 end
 
 function M.handle_anthropic_spec_data(data_stream, cursor_window, cursor_position, event_state)
