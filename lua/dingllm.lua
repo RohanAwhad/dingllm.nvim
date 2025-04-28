@@ -138,20 +138,56 @@ function M.make_research_spec_curl_args(opts, prompt)
 	return args
 end
 
-local function write_string_at_cursor(str)
+local function write_string_at_cursor(str, cursor_window, cursor_position)
 	vim.schedule(function()
-		local current_window = vim.api.nvim_get_current_win()
-		local cursor_position = vim.api.nvim_win_get_cursor(current_window)
-		local row, col = cursor_position[1], cursor_position[2]
+		local buffer = vim.api.nvim_win_get_buf(cursor_window)
+		local row, col = cursor_position[1] - 1, cursor_position[2]
+
+		-- Create namespace if it doesn't exist
+		local ns_id = vim.api.nvim_create_namespace("dingllm_insertion")
+
+		-- We need to get current position if this isn't the first call
+		local mark_id = vim.b[buffer].dingllm_mark_id
+
+		if not mark_id then
+			-- First insertion - create the mark
+			mark_id = vim.api.nvim_buf_set_extmark(buffer, ns_id, row, col, {})
+			vim.b[buffer].dingllm_mark_id = mark_id
+		end
+
+		-- Get current mark position (which tracks edits)
+		local pos = vim.api.nvim_buf_get_extmark_by_id(buffer, ns_id, mark_id, {})
+		local mark_row, mark_col = pos[1], pos[2]
+
+		-- Get current line at mark position
+		local line = vim.api.nvim_buf_get_lines(buffer, mark_row, mark_row + 1, false)[1] or ""
 
 		local lines = vim.split(str, "\n")
-
 		vim.cmd("undojoin")
-		vim.api.nvim_put(lines, "c", true, true)
 
-		local num_lines = #lines
-		local last_line_length = #lines[num_lines]
-		vim.api.nvim_win_set_cursor(current_window, { row + num_lines - 1, col + last_line_length })
+		if #lines == 1 then
+			-- Single line insertion
+			local new_line = line:sub(1, mark_col) .. lines[1] .. line:sub(mark_col + 1)
+			vim.api.nvim_buf_set_lines(buffer, mark_row, mark_row + 1, false, { new_line })
+
+			-- Update mark position
+			vim.api.nvim_buf_set_extmark(buffer, ns_id, mark_row, mark_col + #lines[1], { id = mark_id })
+		else
+			-- Multi-line insertion
+			local first_line = line:sub(1, mark_col) .. lines[1]
+			local last_line = lines[#lines] .. line:sub(mark_col + 1)
+
+			local new_lines = { first_line }
+			for i = 2, #lines - 1 do
+				table.insert(new_lines, lines[i])
+			end
+			table.insert(new_lines, last_line)
+
+			vim.api.nvim_buf_set_lines(buffer, mark_row, mark_row + 1, false, new_lines)
+
+			-- Update mark position to end of inserted text
+			vim.api.nvim_buf_set_extmark(buffer, ns_id, mark_row + #lines - 1, #lines[#lines], { id = mark_id })
+		end
 	end)
 end
 
@@ -225,54 +261,54 @@ local function get_prompt(opts)
 	return prompt
 end
 
-function M.handle_anthropic_spec_data(data_stream, event_state)
+function M.handle_anthropic_spec_data(data_stream, cursor_window, cursor_position, event_state)
 	if event_state == "content_block_delta" then
 		local json = vim.json.decode(data_stream)
 		if json.delta and json.delta.text then
 			local content = json.delta.text
-			write_string_at_cursor(content)
+			write_string_at_cursor(content, cursor_window, cursor_position)
 			return content
 		end
 	end
 end
 
-function M.handle_openai_spec_data(data_stream)
+function M.handle_openai_spec_data(data_stream, cursor_window, cursor_position)
 	if data_stream:match('"delta":') then
 		local json = vim.json.decode(data_stream)
 		if json.choices and json.choices[1] and json.choices[1].delta then
 			local content = json.choices[1].delta.content
 			if content then
-				write_string_at_cursor(content)
+				write_string_at_cursor(content, cursor_window, cursor_position)
 				return content
 			end
 		end
 	end
 end
 
-function M.handle_research_spec_data(data_stream)
+function M.handle_research_spec_data(data_stream, cursor_window, cursor_position)
 	if data_stream:match('"delta":') then
 		local json = vim.json.decode(data_stream)
 		if json.choices and json.choices[1] and json.choices[1].delta then
 			local content = json.choices[1].delta.content
 			if content then
-				write_string_at_cursor(content)
+				write_string_at_cursor(content, cursor_window, cursor_position)
 				return content
 			end
 		end
 	end
 end
 
-function M.handle_deepseek_reasoner_spec_data(data_stream)
+function M.handle_deepseek_reasoner_spec_data(data_stream, cursor_window, cursor_position)
 	if data_stream:match('"delta":') then
 		local json = vim.json.decode(data_stream)
 		if json.choices and json.choices[1] and json.choices[1].delta then
 			local content = json.choices[1].delta.content
 			local reasoning = json.choices[1].delta.reasoning_content
 			if content and type(content) == "string" then
-				write_string_at_cursor(content)
+				write_string_at_cursor(content, cursor_window, cursor_position)
 				return content
 			elseif reasoning and type(reasoning) == "string" then
-				write_string_at_cursor(reasoning)
+				write_string_at_cursor(reasoning, cursor_window, cursor_position)
 				return reasoning
 			end
 		end
@@ -295,6 +331,9 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	local args = make_curl_args_fn(opts, prompt, system_prompt)
 	local curr_event_state = nil
 
+	local cursor_window = vim.api.nvim_get_current_win()
+	local cursor_position = vim.api.nvim_win_get_cursor(cursor_window)
+
 	local function parse_and_call(line)
 		local event = line:match("^event: (.+)$")
 		if event then
@@ -303,7 +342,7 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 		end
 		local data_match = line:match("^data: (.+)$")
 		if data_match then
-			local content = handle_data_fn(data_match, curr_event_state)
+			local content = handle_data_fn(data_match, cursor_window, cursor_position, curr_event_state)
 			if content then
 				return content
 			end
@@ -328,8 +367,14 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 		on_stderr = function(_, _) end,
 		on_exit = function()
 			active_job = nil
-			-- Save prompt and output to DB
 			vim.schedule(function()
+				local buffer = vim.api.nvim_get_current_buf()
+				local mark_id = vim.b[buffer].dingllm_mark_id
+				if mark_id then
+					vim.api.nvim_buf_del_extmark(buffer, vim.api.nvim_create_namespace("dingllm_insertion"), mark_id)
+					vim.b[buffer].dingllm_mark_id = nil
+				end
+				-- Save prompt and output to DB
 				save_to_db(opts.system_prompt, prompt, full_output, opts.model)
 			end)
 		end,
