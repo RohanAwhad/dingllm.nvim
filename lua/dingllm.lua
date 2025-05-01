@@ -30,6 +30,27 @@ local function get_api_key(name)
 	return os.getenv(name)
 end
 
+function M.expand_glob_pattern(pattern)
+	-- Use vim's built-in glob() function instead of shell commands
+	local expanded_files = vim.fn.glob(pattern, false, true)
+
+	local files = {}
+	for _, file in ipairs(expanded_files) do
+		if vim.fn.filereadable(file) == 1 then
+			table.insert(files, file)
+		end
+	end
+
+	-- Print all files joined with newlines in a single call
+	if #files > 0 then
+		print(table.concat(files, " | "))
+	else
+		print("No files found matching pattern: " .. pattern)
+	end
+
+	return files
+end
+
 function M.build_context()
 	-- Define the path to files.txt
 	local files_txt_path = vim.fn.getcwd() .. "/.dingllm/files.txt"
@@ -46,7 +67,16 @@ function M.build_context()
 		-- Trim whitespace and ignore empty lines
 		line = line:match("^%s*(.-)%s*$")
 		if line ~= "" then
-			table.insert(file_paths, line)
+			-- Check if line contains glob pattern
+			if line:match("[*]") then
+				print("expanding glob pattern")
+				local expanded_files = M.expand_glob_pattern(line)
+				for _, expanded_file in ipairs(expanded_files) do
+					table.insert(file_paths, expanded_file)
+				end
+			else
+				table.insert(file_paths, line)
+			end
 		end
 	end
 	file:close()
