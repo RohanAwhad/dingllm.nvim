@@ -4,6 +4,7 @@ local json = vim.json
 local stdout = ""
 local stderr = ""
 local job_pid = nil
+local stdin = nil
 local initialized = false
 local callback_table = {}
 local callback_id = 0
@@ -35,8 +36,8 @@ end
 local function send_message(message)
 	local json_str = json.encode(message)
 	local header = "Content-Length: " .. #json_str .. "\n\n"
-	if job_pid then
-		vim.loop.write(job_pid, header .. json_str)
+	if job_pid and stdin then
+		vim.loop.write(stdin, header .. json_str)
 	else
 		error("Process not started")
 	end
@@ -91,7 +92,8 @@ function M.start(project_path)
 		project_path,
 	}
 
-	local stdin = vim.loop.new_pipe(false)
+	-- Create global stdin for message sending
+	stdin = vim.loop.new_pipe(false)
 	local stdout_pipe = vim.loop.new_pipe(false)
 	local stderr_pipe = vim.loop.new_pipe(false)
 
@@ -101,6 +103,7 @@ function M.start(project_path)
 	}, function(code, signal)
 		print("Process exited with code: " .. code)
 		job_pid = nil
+		stdin = nil
 	end)
 
 	vim.loop.read_start(stdout_pipe, process_data)
@@ -162,17 +165,34 @@ end
 -- Shutdown the service
 function M.shutdown()
 	if job_pid then
+		-- Send shutdown command
 		send_message({
 			command = "shutdown",
 		})
 
-		-- Give it a moment to shut down gracefully
-		vim.defer_fn(function()
-			if job_pid then
-				vim.loop.kill(job_pid, 9) -- Force kill if still running
-				job_pid = nil
+		-- Create a timer to wait for graceful shutdown
+		local shutdown_timer = vim.loop.new_timer()
+		local wait_count = 0
+		local max_wait_attempts = 100 -- 10 second total wait time
+
+		shutdown_timer:start(100, 100, function()
+			wait_count = wait_count + 1
+
+			if not job_pid then
+				-- Process has already terminated
+				shutdown_timer:stop()
+				shutdown_timer:close()
+			elseif wait_count >= max_wait_attempts then
+				-- Force kill after waiting
+				if job_pid then
+					vim.loop.kill(job_pid, 9)
+					job_pid = nil
+					stdin = nil
+				end
+				shutdown_timer:stop()
+				shutdown_timer:close()
 			end
-		end, 500)
+		end)
 
 		return true
 	end

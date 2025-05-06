@@ -20,7 +20,7 @@ end
 init_hackhub()
 
 -- Set up autocmd to shut down hackhub when Neovim exits
-vim.api.nvim_create_autocmd("VimLeavePre", {
+vim.api.nvim_create_autocmd({ "VimLeavePre", "VimLeave" }, {
 	callback = function()
 		if hackhub.is_running() then
 			hackhub.shutdown()
