@@ -1,11 +1,33 @@
 local M = {}
 local Job = require("plenary.job")
 local sqlite = require("sqlite")
+local hackhub = require("hackhub")
 local ding_path = vim.fn.expand("~/.dingllm")
 
 if vim.fn.isdirectory(ding_path) == 0 then
 	vim.fn.mkdir(ding_path, "p")
 end
+
+-- Start hackhub with the current project directory
+local function init_hackhub()
+	local project_dir = vim.fn.getcwd()
+	if project_dir and project_dir ~= "" then
+		hackhub.start(project_dir)
+	end
+end
+
+-- Initialize hackhub when dingllm is loaded
+init_hackhub()
+
+-- Set up autocmd to shut down hackhub when Neovim exits
+vim.api.nvim_create_autocmd("VimLeavePre", {
+	callback = function()
+		if hackhub.is_running() then
+			hackhub.shutdown()
+		end
+	end,
+	group = vim.api.nvim_create_augroup("HackHubCleanup", { clear = true }),
+})
 
 local function save_to_db(instruction, prompt, output, model)
 	local db_path = vim.fn.expand("~/.dingllm/calls.db")
@@ -431,6 +453,44 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 
 	vim.api.nvim_set_keymap("n", "<Esc>", ":doautocmd User DING_LLM_ESCAPE<CR>", { noremap = true, silent = true })
 	return active_job
+end
+
+-- Apply changes to code selected in visual mode
+function M.apply_hackhub_changes()
+	local visual_text = M.get_visual_selection()
+	if not visual_text or #visual_text == 0 then
+		print("No text selected")
+		return
+	end
+
+	local changes = table.concat(visual_text, "\n")
+
+	if not hackhub.is_running() then
+		print("HackHub is not running. Starting...")
+		init_hackhub()
+
+		-- Give hackhub a moment to initialize
+		vim.defer_fn(function()
+			if hackhub.is_running() then
+				M.apply_changes(changes)
+			else
+				print("Failed to start HackHub")
+			end
+		end, 1000)
+	else
+		M.apply_changes(changes)
+	end
+end
+
+-- Helper function to handle the actual change application
+function M.apply_changes(changes)
+	hackhub.apply_changes(changes, function(result)
+		if result.status == "success" then
+			print("Changes applied successfully")
+		else
+			print("Error applying changes: " .. (result.error or "Unknown error"))
+		end
+	end)
 end
 
 return M
