@@ -18,6 +18,7 @@ end
 
 -- Initialize hackhub when dingllm is loaded
 init_hackhub()
+M.hackhub_prompt = hackhub.system_prompt
 
 -- Set up autocmd to shut down hackhub when Neovim exits
 vim.api.nvim_create_autocmd({ "VimLeavePre", "VimLeave" }, {
