@@ -93,24 +93,8 @@ function M.build_context()
 		local content_file = io.open(full_path, "r")
 		if content_file then
 			local content = content_file:read("*all")
-			table.insert(
-				result,
-				string.format(
-					"<file>\n<filepath>%s</filepath>\n<file_content>%s</file_content>\n</file>",
-					path,
-					content
-				)
-			)
+			table.insert(result, string.format("```%s\n%s\n```\n", path, content))
 			content_file:close()
-		else
-			table.insert(
-				result,
-				string.format(
-					"<file>\n<filepath>%s</filepath>\n<file_content>Error: Could not read file %s</file_content>\n</file>",
-					path,
-					path
-				)
-			)
 		end
 	end
 
@@ -175,7 +159,7 @@ function M.make_anthropic_spec_curl_args(opts, prompt, system_prompt)
 		messages = { { role = "user", content = prompt } },
 		model = opts.model,
 		stream = true,
-		max_tokens = 4096,
+		max_tokens = 8192,
 	}
 	local args = { "-N", "-X", "POST", "-H", "Content-Type: application/json", "-d", vim.json.encode(data) }
 	if api_key then
