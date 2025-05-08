@@ -399,7 +399,7 @@ function M.handle_deepseek_reasoner_spec_data(data_stream, cursor_window, cursor
 			if content and type(content) == "string" then
 				-- First content after reasoning - add 2 newlines
 				if not (state.reasoning_complete or state.added_separator) then
-					write_string_at_cursor("\n\n=== THINING END ===\n\n", cursor_window, cursor_position)
+					write_string_at_cursor("\n\n=== THINKING END ===\n\n", cursor_window, cursor_position)
 					state.added_separator = true
 				end
 				write_string_at_cursor(content, cursor_window, cursor_position)
