@@ -320,26 +320,52 @@ local function get_prompt(opts)
 end
 
 function M.handle_anthropic_spec_data(data_stream, cursor_window, cursor_position, event_state)
+	local json
+	local content
+
+	if event_state == "message_start" then
+		json = vim.json.decode(data_stream)
+		if json.message and json.message.id then
+			content = "=== Assistant Response ID: " .. json.message.id .. " Start ===\n\n"
+			write_string_at_cursor(content, cursor_window, cursor_position)
+		end
+	end
 	if event_state == "content_block_delta" then
-		local json = vim.json.decode(data_stream)
+		json = vim.json.decode(data_stream)
 		if json.delta and json.delta.text then
-			local content = json.delta.text
+			content = json.delta.text
 			write_string_at_cursor(content, cursor_window, cursor_position)
 			return content
 		end
 	end
+	if event_state == "message_stop" then
+		content = "\n\n=== Assistant Response End ===\n\n"
+		write_string_at_cursor(content, cursor_window, cursor_position)
+	end
 end
 
-function M.handle_openai_spec_data(data_stream, cursor_window, cursor_position)
+function M.handle_openai_spec_data(data_stream, cursor_window, cursor_position, event_state, state)
+	local content = nil
 	if data_stream:match('"delta":') then
 		local json = vim.json.decode(data_stream)
+		if not state.message_start and json.id then
+			content = "=== Assistant Response ID: " .. json.id .. " Start ===\n\n"
+			write_string_at_cursor(content, cursor_window, cursor_position)
+			state.message_start = true
+		end
+
 		if json.choices and json.choices[1] and json.choices[1].delta then
-			local content = json.choices[1].delta.content
+			content = json.choices[1].delta.content
 			if content then
 				write_string_at_cursor(content, cursor_window, cursor_position)
 				return content
 			end
 		end
+	end
+
+	if data_stream == "[DONE]" then
+		content = "\n\n=== Assistant Response End ===\n\n"
+		write_string_at_cursor(content, cursor_window, cursor_position)
 	end
 end
 
@@ -356,20 +382,40 @@ function M.handle_research_spec_data(data_stream, cursor_window, cursor_position
 	end
 end
 
-function M.handle_deepseek_reasoner_spec_data(data_stream, cursor_window, cursor_position)
+function M.handle_deepseek_reasoner_spec_data(data_stream, cursor_window, cursor_position, event_state, state)
+	local content
 	if data_stream:match('"delta":') then
 		local json = vim.json.decode(data_stream)
+		if not state.message_start and json.id then
+			content = "=== Assistant Response ID: " .. json.id .. " Start ===\n\n"
+			write_string_at_cursor(content, cursor_window, cursor_position)
+			state.message_start = true
+		end
+
 		if json.choices and json.choices[1] and json.choices[1].delta then
-			local content = json.choices[1].delta.content
+			content = json.choices[1].delta.content
 			local reasoning = json.choices[1].delta.reasoning_content
+
 			if content and type(content) == "string" then
+				-- First content after reasoning - add 2 newlines
+				if not (state.reasoning_complete or state.added_separator) then
+					write_string_at_cursor("\n\n=== THINING END ===\n\n", cursor_window, cursor_position)
+					state.added_separator = true
+				end
 				write_string_at_cursor(content, cursor_window, cursor_position)
+				state.reasoning_complete = true
 				return content
 			elseif reasoning and type(reasoning) == "string" then
 				write_string_at_cursor(reasoning, cursor_window, cursor_position)
+				state.added_separator = false -- Reset for next reasoning block
 				return reasoning
 			end
 		end
+	end
+
+	if data_stream == "[DONE]" then
+		content = "\n\n=== Assistant Response End ===\n\n"
+		write_string_at_cursor(content, cursor_window, cursor_position)
 	end
 end
 
@@ -388,6 +434,7 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	end
 	local args = make_curl_args_fn(opts, prompt, system_prompt)
 	local curr_event_state = nil
+	local state = { added_separator = false, reasoning_complete = false, message_start = false }
 
 	local cursor_window = vim.api.nvim_get_current_win()
 	local cursor_position = vim.api.nvim_win_get_cursor(cursor_window)
@@ -400,7 +447,7 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 		end
 		local data_match = line:match("^data: (.+)$")
 		if data_match then
-			local content = handle_data_fn(data_match, cursor_window, cursor_position, curr_event_state)
+			local content = handle_data_fn(data_match, cursor_window, cursor_position, curr_event_state, state)
 			if content then
 				return content
 			end
