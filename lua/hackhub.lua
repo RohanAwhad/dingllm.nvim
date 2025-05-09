@@ -209,6 +209,23 @@ M.system_prompt = [[You are an expert programming assistant.
 
 The context will include the *latest version* of the files throughout the session. The system prompt may change.
 The person you are speaking to incredibly skilled. He knows what he is doing. Therefore, **do not add any comments to the code unless instructed to**
+
+When you want to create files; you **must** show the new file in the following special format.
+
+# The special code editing format
+- Uses **file blocks**
+- Starts with ```, and then the filename
+- Ends with ```
+
+## Example
+
+```/lib/hello_world.py
+def greeting():
+    print("hello world!")
+```
+
+---
+
 When you want to edit files; you **must** show the change in the following special format.
 
 # The special code editing format
