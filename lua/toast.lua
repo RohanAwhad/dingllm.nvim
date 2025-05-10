@@ -93,11 +93,17 @@ function M.update_toast(text)
            active_toast.buf and vim.api.nvim_buf_is_valid(active_toast.buf) then
             
             if text and text ~= "" then
-                local max_len = 38  -- Max display width
-                if #text > max_len then
-                    text = text:sub(1, max_len - 3) .. "..."
+                -- Split text into lines and truncate each line
+                local lines = {}
+                for line in text:gmatch("[^\n]+") do
+                    if #line > 38 then
+                        line = line:sub(1, 35) .. "..."
+                    end
+                    table.insert(lines, line)
+                    if #lines >= 2 then break end  -- Only show last 2 lines
                 end
-                vim.api.nvim_buf_set_lines(active_toast.buf, 1, 2, false, {text})
+                vim.api.nvim_buf_set_lines(active_toast.buf, 1, 3, false, lines)
+
             end
         end
     end)
