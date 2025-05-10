@@ -182,8 +182,15 @@ function M.make_anthropic_spec_curl_args(opts, prompt, system_prompt)
 		messages = { { role = "user", content = prompt } },
 		model = opts.model,
 		stream = true,
-		max_tokens = 8192,
 	}
+
+	if opts.think then
+		data.max_tokens = 40000
+		data.thinking = { type = "enabled", budget_tokens = 32000 } -- this is bad. doesn't follow system_prompt
+	else
+		data.max_tokens = 8192
+	end
+
 	local args = { "-N", "-X", "POST", "-H", "Content-Type: application/json", "-d", vim.json.encode(data) }
 	if api_key then
 		table.insert(args, "-H")
@@ -319,7 +326,7 @@ local function get_prompt(opts)
 	return prompt
 end
 
-function M.handle_anthropic_spec_data(data_stream, cursor_window, cursor_position, event_state)
+function M.handle_anthropic_spec_data(data_stream, cursor_window, cursor_position, event_state, state)
 	local json
 	local content
 
@@ -332,9 +339,23 @@ function M.handle_anthropic_spec_data(data_stream, cursor_window, cursor_positio
 	end
 	if event_state == "content_block_delta" then
 		json = vim.json.decode(data_stream)
+		-- log reasoning output
+		if json.delta and json.delta.thinking then
+			content = json.delta.thinking
+			write_string_at_cursor(content, cursor_window, cursor_position)
+			state.added_separator = false -- Reset for next reasoning block
+			return content
+		end
+
+		-- log actual output
 		if json.delta and json.delta.text then
+			if not (state.reasoning_complete or state.added_separator) then
+				write_string_at_cursor("\n\n=== THINKING END ===\n\n", cursor_window, cursor_position)
+				state.added_separator = true
+			end
 			content = json.delta.text
 			write_string_at_cursor(content, cursor_window, cursor_position)
+			state.reasoning_complete = true
 			return content
 		end
 	end
