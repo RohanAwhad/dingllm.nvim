@@ -73,7 +73,7 @@ function M.show_model_toast(model, text)
 
 		-- Set highlights
 		vim.api.nvim_buf_add_highlight(buf, -1, "Statement", 0, 0, 6) -- "Model:" in statement color
-		vim.api.nvim_buf_add_highlight(buf, -1, "Identifier", 0, 7, -1) -- model name in identifier color
+		vim.api.nvim_buf_add_highlight(buf, -1, "Character", 0, 7, -1) -- model name in identifier color
 
 		-- Update text if provided
 		if text and text ~= "" then
@@ -109,6 +109,7 @@ function M.update_toast(text)
 					end -- Only show last 2 lines
 				end
 				vim.api.nvim_buf_set_lines(active_toast.buf, 1, 3, false, lines)
+				vim.api.nvim_buf_add_highlight(active_toast.buf, -1, "LspReferenceRead", 1, 0, -1) -- "Model:" in statement color
 			end
 		end
 	end)
