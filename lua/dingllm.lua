@@ -2,11 +2,16 @@ local M = {}
 local Job = require("plenary.job")
 local sqlite = require("sqlite")
 local hackhub = require("hackhub")
+local toast = require("toast")
 local ding_path = vim.fn.expand("~/.dingllm")
 
 if vim.fn.isdirectory(ding_path) == 0 then
 	vim.fn.mkdir(ding_path, "p")
 end
+
+-- Initialize toast module
+toast.setup()
+
 
 -- Start hackhub with the current project directory
 local function init_hackhub()
@@ -449,6 +454,7 @@ local active_job = nil
 
 function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_data_fn)
 	local full_output = ""
+	local toast = require("toast")
 
 	vim.api.nvim_clear_autocmds({ group = group })
 	local prompt = get_prompt(opts)
@@ -464,6 +470,9 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	local cursor_window = vim.api.nvim_get_current_win()
 	local cursor_position = vim.api.nvim_win_get_cursor(cursor_window)
 
+	-- Show initial toast with model info
+	toast.show_model_toast(opts.model or "Unknown model", "Starting...")
+
 	local function parse_and_call(line)
 		local event = line:match("^event: (.+)$")
 		if event then
@@ -474,6 +483,8 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 		if data_match then
 			local content = handle_data_fn(data_match, cursor_window, cursor_position, curr_event_state, state)
 			if content then
+				-- Update toast with latest content
+				toast.update_toast(content)
 				return content
 			end
 		end
@@ -506,6 +517,8 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 				end
 				-- Save prompt and output to DB
 				save_to_db(opts.system_prompt, prompt, full_output, opts.model)
+				-- Close toast when job completes
+				toast.close_toast()
 			end)
 		end,
 	})
@@ -520,6 +533,8 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 				active_job:shutdown()
 				print("LLM streaming cancelled")
 				active_job = nil
+				-- Close toast when job is cancelled
+				toast.close_toast()
 			end
 		end,
 	})
@@ -527,6 +542,7 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	vim.api.nvim_set_keymap("n", "<Esc>", ":doautocmd User DING_LLM_ESCAPE<CR>", { noremap = true, silent = true })
 	return active_job
 end
+
 
 -- Apply changes to code selected in visual mode
 function M.apply_hackhub_changes()
