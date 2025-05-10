@@ -348,8 +348,12 @@ function M.handle_openai_spec_data(data_stream, cursor_window, cursor_position, 
 	local content = nil
 	if data_stream:match('"delta":') then
 		local json = vim.json.decode(data_stream)
-		if not state.message_start and json.id then
-			content = "=== Assistant Response ID: " .. json.id .. " Start ===\n\n"
+		if not state.message_start then
+			content = "\n=== Assistant "
+			if json.id then
+				content = content .. "Response ID: " .. json.id
+			end
+			content = content .. " Start ===\n\n"
 			write_string_at_cursor(content, cursor_window, cursor_position)
 			state.message_start = true
 		end
