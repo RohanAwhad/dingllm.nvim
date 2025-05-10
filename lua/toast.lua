@@ -14,7 +14,8 @@ local function create_window()
     local col = vim.api.nvim_get_option("columns") - width - 1
 
     local buf = vim.api.nvim_create_buf(false, true)
-    local win = vim.api.nvim_open_win(buf, true, {
+    local win = vim.api.nvim_open_win(buf, false, {
+
         relative = "editor",
         width = width,
         height = height,
