@@ -12,7 +12,6 @@ end
 -- Initialize toast module
 toast.setup()
 
-
 -- Start hackhub with the current project directory
 local function init_hackhub()
 	local project_dir = vim.fn.getcwd()
@@ -543,7 +542,6 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	return active_job
 end
 
-
 -- Apply changes to code selected in visual mode
 function M.apply_hackhub_changes()
 	local visual_text = M.get_visual_selection()
@@ -580,6 +578,24 @@ function M.apply_changes(changes)
 			print("Error applying changes: " .. (result.error or "Unknown error"))
 		end
 	end)
+end
+
+function M.get_docstrings()
+	local docstrings_path = vim.fn.getcwd() .. "/.dingllm/docstrings.json"
+	local docstrings_file = io.open(docstrings_path, "r")
+	if not docstrings_file then
+		print("docstrings.json not found in .dingllm directory")
+		return
+	end
+	local docstrings = vim.json.decode(docstrings_file:read("*a"))
+	docstrings_file:close()
+
+	-- Build markdown table of files with docstrings
+	local docstrings_table = {}
+	for path, entry in pairs(docstrings) do
+		table.insert(docstrings_table, string.format("| `%s` | %s |", path, entry.docstring))
+	end
+	return table.concat(docstrings_table, "\n")
 end
 
 return M
