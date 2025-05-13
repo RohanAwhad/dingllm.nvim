@@ -121,7 +121,7 @@ function M.start(project_path)
 		if initialized then
 			wait_for_init:stop()
 			wait_for_init:close()
-		elseif attempts > 50 then -- 5 seconds timeout
+		elseif attempts > 200 then -- 5 seconds timeout
 			wait_for_init:stop()
 			wait_for_init:close()
 			error("Failed to initialize hackhub service")
