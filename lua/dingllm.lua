@@ -451,14 +451,6 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	-- Show initial toast with model info
 	toast.show_model_toast(job_id, opts.model or "Unknown model", "Starting...")
 
-	-- Write initial header
-	M.write_string_at_cursor(
-		string.format("\n=== LLM Job %d: %s ===\n\n", job_id, opts.model or "Unknown model"),
-		buffer,
-		ns_id,
-		mark_id
-	)
-
 	local function parse_and_call(line)
 		local event = line:match("^event: (.+)$")
 		if event then
@@ -495,12 +487,6 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 		end,
 		on_exit = function(_, code)
 			vim.schedule(function()
-				-- Add footer with exit code if not successful
-				local footer = (code == 0) and string.format("\n=== LLM Job %d Completed ===\n\n", job_id)
-					or string.format("\n=== LLM Job %d Failed (code %d) ===\n\n", job_id, code)
-
-				M.write_string_at_cursor(footer, buffer, ns_id, mark_id)
-
 				-- Cleanup
 				vim.api.nvim_buf_del_extmark(buffer, ns_id, mark_id)
 				active_jobs[job_id] = nil
