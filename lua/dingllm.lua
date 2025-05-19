@@ -485,6 +485,7 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 			-- 	end)
 			-- end
 		end,
+		-- In the on_exit handler:
 		on_exit = function(_, code)
 			vim.schedule(function()
 				-- Cleanup
@@ -492,11 +493,14 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 				active_jobs[job_id] = nil
 				save_to_db(opts.system_prompt, prompt, full_output, opts.model)
 
-				-- Update toast with completion status
-				local status = (code == 0) and "Completed" or "Failed"
-				toast.update_job_status(job_id, status)
+				-- Close toast immediately if successful, otherwise show failed status
+				if code == 0 then
+					toast.close_job_toast(job_id)
+				else
+					toast.update_job_status(job_id, "Failed")
+				end
 
-				-- Close toast if no active jobs
+				-- Close toast if no active jobs (only needed for failed cases)
 				if vim.tbl_isempty(active_jobs) then
 					toast.close_toast()
 				end
