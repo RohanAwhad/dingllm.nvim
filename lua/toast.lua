@@ -4,8 +4,8 @@ local M = {}
 local active_toasts = {}
 
 -- Constants for toast dimensions and styling
-local TOAST_WIDTH = 40
-local TOAST_BASE_HEIGHT = 3
+local TOAST_WIDTH = 45
+local TOAST_BASE_HEIGHT = 2
 local TOAST_PADDING = 2
 
 -- Create toast window for a specific job
@@ -121,7 +121,7 @@ function M.show_model_toast(job_id, model, status)
 
 		-- Set content
 		vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "Job " .. job_id .. " | Model: " .. model })
-		vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "Status: " .. status })
+		-- vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "Status: " .. status })
 
 		-- Set highlights
 		vim.api.nvim_buf_add_highlight(buf, -1, "Statement", 0, 0, 4 + #tostring(job_id))
@@ -160,7 +160,7 @@ function M.update_toast(job_id, text)
 				end
 
 				-- Only update the last line
-				vim.api.nvim_buf_set_lines(toast.buf, 2, 3, false, lines)
+				vim.api.nvim_buf_set_lines(toast.buf, 1, 2, false, lines)
 				vim.api.nvim_buf_add_highlight(toast.buf, -1, "LspReferenceRead", 2, 0, -1)
 			end
 		end
