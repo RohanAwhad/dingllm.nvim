@@ -277,7 +277,7 @@ local function get_prompt(opts)
 	return prompt
 end
 
-function M.handle_anthropic_spec_data(data_stream, cursor_window, cursor_position, event_state, state)
+function M.handle_anthropic_spec_data(data_stream, buffer, ns_id, mark_id, event_state, state)
 	local json
 	local content
 
@@ -285,7 +285,7 @@ function M.handle_anthropic_spec_data(data_stream, cursor_window, cursor_positio
 		json = vim.json.decode(data_stream)
 		if json.message and json.message.id then
 			content = "=== Assistant Response ID: " .. json.message.id .. " Start ===\n\n"
-			write_string_at_cursor(content, cursor_window, cursor_position)
+			M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 		end
 	end
 	if event_state == "content_block_delta" then
@@ -293,7 +293,7 @@ function M.handle_anthropic_spec_data(data_stream, cursor_window, cursor_positio
 		-- log reasoning output
 		if json.delta and json.delta.thinking then
 			content = json.delta.thinking
-			write_string_at_cursor(content, cursor_window, cursor_position)
+			M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 			state.added_separator = false -- Reset for next reasoning block
 			return content
 		end
@@ -301,22 +301,22 @@ function M.handle_anthropic_spec_data(data_stream, cursor_window, cursor_positio
 		-- log actual output
 		if json.delta and json.delta.text then
 			if not (state.reasoning_complete or state.added_separator) then
-				write_string_at_cursor("\n\n=== THINKING END ===\n\n", cursor_window, cursor_position)
+				M.write_string_at_cursor("\n\n=== THINKING END ===\n\n", buffer, ns_id, mark_id)
 				state.added_separator = true
 			end
 			content = json.delta.text
-			write_string_at_cursor(content, cursor_window, cursor_position)
+			M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 			state.reasoning_complete = true
 			return content
 		end
 	end
 	if event_state == "message_stop" then
 		content = "\n\n=== Assistant Response End ===\n\n"
-		write_string_at_cursor(content, cursor_window, cursor_position)
+		M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 	end
 end
 
-function M.handle_openai_spec_data(data_stream, cursor_window, cursor_position, event_state, state)
+function M.handle_openai_spec_data(data_stream, buffer, ns_id, mark_id, event_state, state)
 	local content = nil
 	if data_stream:match('"delta":') then
 		local json = vim.json.decode(data_stream)
@@ -326,14 +326,14 @@ function M.handle_openai_spec_data(data_stream, cursor_window, cursor_position, 
 				content = content .. "Response ID: " .. json.id
 			end
 			content = content .. " Start ===\n\n"
-			write_string_at_cursor(content, cursor_window, cursor_position)
+			M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 			state.message_start = true
 		end
 
 		if json.choices and json.choices[1] and json.choices[1].delta then
 			content = json.choices[1].delta.content
 			if content then
-				write_string_at_cursor(content, cursor_window, cursor_position)
+				M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 				return content
 			end
 		end
@@ -341,30 +341,30 @@ function M.handle_openai_spec_data(data_stream, cursor_window, cursor_position, 
 
 	if data_stream == "[DONE]" then
 		content = "\n\n=== Assistant Response End ===\n\n"
-		write_string_at_cursor(content, cursor_window, cursor_position)
+		M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 	end
 end
 
-function M.handle_research_spec_data(data_stream, cursor_window, cursor_position)
+function M.handle_research_spec_data(data_stream, buffer, ns_id, mark_id)
 	if data_stream:match('"delta":') then
 		local json = vim.json.decode(data_stream)
 		if json.choices and json.choices[1] and json.choices[1].delta then
 			local content = json.choices[1].delta.content
 			if content then
-				write_string_at_cursor(content, cursor_window, cursor_position)
+				M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 				return content
 			end
 		end
 	end
 end
 
-function M.handle_deepseek_reasoner_spec_data(data_stream, cursor_window, cursor_position, event_state, state)
+function M.handle_deepseek_reasoner_spec_data(data_stream, buffer, ns_id, mark_id, event_state, state)
 	local content
 	if data_stream:match('"delta":') then
 		local json = vim.json.decode(data_stream)
 		if not state.message_start and json.id then
 			content = "=== Assistant Response ID: " .. json.id .. " Start ===\n\n"
-			write_string_at_cursor(content, cursor_window, cursor_position)
+			M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 			state.message_start = true
 		end
 
@@ -375,14 +375,14 @@ function M.handle_deepseek_reasoner_spec_data(data_stream, cursor_window, cursor
 			if content and type(content) == "string" then
 				-- First content after reasoning - add 2 newlines
 				if not (state.reasoning_complete or state.added_separator) then
-					write_string_at_cursor("\n\n=== THINKING END ===\n\n", cursor_window, cursor_position)
+					M.write_string_at_cursor("\n\n=== THINKING END ===\n\n", buffer, ns_id, mark_id)
 					state.added_separator = true
 				end
-				write_string_at_cursor(content, cursor_window, cursor_position)
+				M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 				state.reasoning_complete = true
 				return content
 			elseif reasoning and type(reasoning) == "string" then
-				write_string_at_cursor(reasoning, cursor_window, cursor_position)
+				M.write_string_at_cursor(reasoning, buffer, ns_id, mark_id)
 				state.added_separator = false -- Reset for next reasoning block
 				return reasoning
 			end
@@ -391,7 +391,7 @@ function M.handle_deepseek_reasoner_spec_data(data_stream, cursor_window, cursor
 
 	if data_stream == "[DONE]" then
 		content = "\n\n=== Assistant Response End ===\n\n"
-		write_string_at_cursor(content, cursor_window, cursor_position)
+		M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 	end
 end
 
@@ -399,38 +399,28 @@ local group = vim.api.nvim_create_augroup("DING_LLM_AutoGroup", { clear = true }
 local active_jobs = {}
 local next_job_id = 1
 
-local function write_string_at_cursor(str, buffer, ns_id, mark_id, original_pos)
+function M.write_string_at_cursor(str, buffer, ns_id, mark_id)
 	vim.schedule(function()
 		local pos = vim.api.nvim_buf_get_extmark_by_id(buffer, ns_id, mark_id, {})
 		local mark_row, mark_col = pos[1], pos[2]
 
-		-- Get current line at mark position
 		local line = vim.api.nvim_buf_get_lines(buffer, mark_row, mark_row + 1, false)[1] or ""
-
 		local lines = vim.split(str, "\n")
 		pcall(vim.cmd, "undojoin")
 
 		if #lines == 1 then
-			-- Single line insertion
 			local new_line = line:sub(1, mark_col) .. lines[1] .. line:sub(mark_col + 1)
 			vim.api.nvim_buf_set_lines(buffer, mark_row, mark_row + 1, false, { new_line })
-
-			-- Update mark position
 			vim.api.nvim_buf_set_extmark(buffer, ns_id, mark_row, mark_col + #lines[1], { id = mark_id })
 		else
-			-- Multi-line insertion
 			local first_line = line:sub(1, mark_col) .. lines[1]
 			local last_line = lines[#lines] .. line:sub(mark_col + 1)
-
 			local new_lines = { first_line }
 			for i = 2, #lines - 1 do
 				table.insert(new_lines, lines[i])
 			end
 			table.insert(new_lines, last_line)
-
 			vim.api.nvim_buf_set_lines(buffer, mark_row, mark_row + 1, false, new_lines)
-
-			-- Update mark position to end of inserted text
 			vim.api.nvim_buf_set_extmark(buffer, ns_id, mark_row + #lines - 1, #lines[#lines], { id = mark_id })
 		end
 	end)
@@ -451,7 +441,6 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	local ns_id = vim.api.nvim_create_namespace("dingllm_job_" .. job_id)
 	local mark_id = vim.api.nvim_buf_set_extmark(buffer, ns_id, original_row, original_col, {})
 
-	vim.api.nvim_clear_autocmds({ group = group })
 	local prompt = get_prompt(opts)
 	local system_prompt = not opts.research and opts.system_prompt or nil
 
@@ -463,12 +452,11 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	toast.show_model_toast(job_id, opts.model or "Unknown model", "Starting...")
 
 	-- Write initial header
-	write_string_at_cursor(
+	M.write_string_at_cursor(
 		string.format("\n=== LLM Job %d: %s ===\n\n", job_id, opts.model or "Unknown model"),
 		buffer,
 		ns_id,
-		mark_id,
-		cursor_pos
+		mark_id
 	)
 
 	local function parse_and_call(line)
@@ -497,23 +485,30 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 				full_output = full_output .. content
 			end
 		end,
-		on_stderr = function(_, _) end,
-		on_exit = function()
+		on_stderr = function(_, err)
+			-- -- Log errors but continue processing
+			-- if err and err ~= "" then
+			-- 	vim.schedule(function()
+			-- 		vim.api.nvim_echo({ { "Error in job " .. job_id .. ": " .. err, "ErrorMsg" } }, false, {})
+			-- 	end)
+			-- end
+		end,
+		on_exit = function(_, code)
 			vim.schedule(function()
-				-- Add footer
-				write_string_at_cursor(
-					string.format("\n=== LLM Job %d Completed ===\n\n", job_id),
-					buffer,
-					ns_id,
-					mark_id,
-					cursor_pos
-				)
+				-- Add footer with exit code if not successful
+				local footer = (code == 0) and string.format("\n=== LLM Job %d Completed ===\n\n", job_id)
+					or string.format("\n=== LLM Job %d Failed (code %d) ===\n\n", job_id, code)
+
+				M.write_string_at_cursor(footer, buffer, ns_id, mark_id)
 
 				-- Cleanup
 				vim.api.nvim_buf_del_extmark(buffer, ns_id, mark_id)
 				active_jobs[job_id] = nil
 				save_to_db(opts.system_prompt, prompt, full_output, opts.model)
-				toast.update_job_status(job_id, "Completed")
+
+				-- Update toast with completion status
+				local status = (code == 0) and "Completed" or "Failed"
+				toast.update_job_status(job_id, status)
 
 				-- Close toast if no active jobs
 				if vim.tbl_isempty(active_jobs) then
@@ -533,28 +528,33 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 
 	job:start()
 
-	vim.api.nvim_create_autocmd("User", {
-		group = group,
-		pattern = "DING_LLM_ESCAPE",
-		callback = function()
-			for id, job_data in pairs(active_jobs) do
-				job_data.job:shutdown()
-				write_string_at_cursor(
-					string.format("\n=== LLM Job %d Cancelled ===\n\n", id),
-					job_data.buffer,
-					job_data.ns_id,
-					job_data.mark_id,
-					cursor_pos
-				)
-				vim.api.nvim_buf_del_extmark(job_data.buffer, job_data.ns_id, job_data.mark_id)
-				print("LLM streaming cancelled for job " .. id)
-			end
-			active_jobs = {}
-			toast.close_toast()
-		end,
-	})
+	-- Only set up escape handler if this is the first job
+	if vim.tbl_count(active_jobs) == 1 then
+		vim.api.nvim_clear_autocmds({ group = group })
 
-	vim.api.nvim_set_keymap("n", "<Esc>", ":doautocmd User DING_LLM_ESCAPE<CR>", { noremap = true, silent = true })
+		vim.api.nvim_create_autocmd("User", {
+			group = group,
+			pattern = "DING_LLM_ESCAPE",
+			callback = function()
+				for id, job_data in pairs(active_jobs) do
+					job_data.job:shutdown()
+					M.write_string_at_cursor(
+						string.format("\n=== LLM Job %d Cancelled ===\n\n", id),
+						job_data.buffer,
+						job_data.ns_id,
+						job_data.mark_id
+					)
+					vim.api.nvim_buf_del_extmark(job_data.buffer, job_data.ns_id, job_data.mark_id)
+					print("LLM streaming cancelled for job " .. id)
+				end
+				active_jobs = {}
+				toast.close_toast()
+			end,
+		})
+
+		vim.api.nvim_set_keymap("n", "<Esc>", ":doautocmd User DING_LLM_ESCAPE<CR>", { noremap = true, silent = true })
+	end
+
 	return job_id
 end
 
