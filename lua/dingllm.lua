@@ -244,59 +244,6 @@ function M.make_research_spec_curl_args(opts, prompt)
 	return args
 end
 
-local function write_string_at_cursor(str, cursor_window, cursor_position)
-	vim.schedule(function()
-		local buffer = vim.api.nvim_win_get_buf(cursor_window)
-		local row, col = cursor_position[1] - 1, cursor_position[2]
-
-		-- Create namespace if it doesn't exist
-		local ns_id = vim.api.nvim_create_namespace("dingllm_insertion")
-
-		-- We need to get current position if this isn't the first call
-		local mark_id = vim.b[buffer].dingllm_mark_id
-
-		if not mark_id then
-			-- First insertion - create the mark
-			mark_id = vim.api.nvim_buf_set_extmark(buffer, ns_id, row, col, {})
-			vim.b[buffer].dingllm_mark_id = mark_id
-		end
-
-		-- Get current mark position (which tracks edits)
-		local pos = vim.api.nvim_buf_get_extmark_by_id(buffer, ns_id, mark_id, {})
-		local mark_row, mark_col = pos[1], pos[2]
-
-		-- Get current line at mark position
-		local line = vim.api.nvim_buf_get_lines(buffer, mark_row, mark_row + 1, false)[1] or ""
-
-		local lines = vim.split(str, "\n")
-		pcall(vim.cmd, "undojoin")
-
-		if #lines == 1 then
-			-- Single line insertion
-			local new_line = line:sub(1, mark_col) .. lines[1] .. line:sub(mark_col + 1)
-			vim.api.nvim_buf_set_lines(buffer, mark_row, mark_row + 1, false, { new_line })
-
-			-- Update mark position
-			vim.api.nvim_buf_set_extmark(buffer, ns_id, mark_row, mark_col + #lines[1], { id = mark_id })
-		else
-			-- Multi-line insertion
-			local first_line = line:sub(1, mark_col) .. lines[1]
-			local last_line = lines[#lines] .. line:sub(mark_col + 1)
-
-			local new_lines = { first_line }
-			for i = 2, #lines - 1 do
-				table.insert(new_lines, lines[i])
-			end
-			table.insert(new_lines, last_line)
-
-			vim.api.nvim_buf_set_lines(buffer, mark_row, mark_row + 1, false, new_lines)
-
-			-- Update mark position to end of inserted text
-			vim.api.nvim_buf_set_extmark(buffer, ns_id, mark_row + #lines - 1, #lines[#lines], { id = mark_id })
-		end
-	end)
-end
-
 local function get_prompt(opts)
 	local replace = opts.replace
 	local visual_lines = M.get_visual_selection()
@@ -449,28 +396,80 @@ function M.handle_deepseek_reasoner_spec_data(data_stream, cursor_window, cursor
 end
 
 local group = vim.api.nvim_create_augroup("DING_LLM_AutoGroup", { clear = true })
-local active_job = nil
+local active_jobs = {}
+local next_job_id = 1
+
+local function write_string_at_cursor(str, buffer, ns_id, mark_id, original_pos)
+	vim.schedule(function()
+		local pos = vim.api.nvim_buf_get_extmark_by_id(buffer, ns_id, mark_id, {})
+		local mark_row, mark_col = pos[1], pos[2]
+
+		-- Get current line at mark position
+		local line = vim.api.nvim_buf_get_lines(buffer, mark_row, mark_row + 1, false)[1] or ""
+
+		local lines = vim.split(str, "\n")
+		pcall(vim.cmd, "undojoin")
+
+		if #lines == 1 then
+			-- Single line insertion
+			local new_line = line:sub(1, mark_col) .. lines[1] .. line:sub(mark_col + 1)
+			vim.api.nvim_buf_set_lines(buffer, mark_row, mark_row + 1, false, { new_line })
+
+			-- Update mark position
+			vim.api.nvim_buf_set_extmark(buffer, ns_id, mark_row, mark_col + #lines[1], { id = mark_id })
+		else
+			-- Multi-line insertion
+			local first_line = line:sub(1, mark_col) .. lines[1]
+			local last_line = lines[#lines] .. line:sub(mark_col + 1)
+
+			local new_lines = { first_line }
+			for i = 2, #lines - 1 do
+				table.insert(new_lines, lines[i])
+			end
+			table.insert(new_lines, last_line)
+
+			vim.api.nvim_buf_set_lines(buffer, mark_row, mark_row + 1, false, new_lines)
+
+			-- Update mark position to end of inserted text
+			vim.api.nvim_buf_set_extmark(buffer, ns_id, mark_row + #lines - 1, #lines[#lines], { id = mark_id })
+		end
+	end)
+end
 
 function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_data_fn)
+	local job_id = next_job_id
+	next_job_id = next_job_id + 1
+
 	local full_output = ""
 	local toast = require("toast")
+	local buffer = vim.api.nvim_get_current_buf()
+	local cursor_pos = vim.api.nvim_win_get_cursor(0)
+	local original_row = cursor_pos[1] - 1
+	local original_col = cursor_pos[2]
+
+	-- Create unique namespace and mark for this job
+	local ns_id = vim.api.nvim_create_namespace("dingllm_job_" .. job_id)
+	local mark_id = vim.api.nvim_buf_set_extmark(buffer, ns_id, original_row, original_col, {})
 
 	vim.api.nvim_clear_autocmds({ group = group })
 	local prompt = get_prompt(opts)
-	local system_prompt
-	if not opts.research then
-		system_prompt = opts.system_prompt
-			or "You are a tsundere uwu anime. Yell at me for not setting my configuration for my llm plugin correctly"
-	end
+	local system_prompt = not opts.research and opts.system_prompt or nil
+
 	local args = make_curl_args_fn(opts, prompt, system_prompt)
 	local curr_event_state = nil
 	local state = { added_separator = false, reasoning_complete = false, message_start = false }
 
-	local cursor_window = vim.api.nvim_get_current_win()
-	local cursor_position = vim.api.nvim_win_get_cursor(cursor_window)
-
 	-- Show initial toast with model info
-	toast.show_model_toast(opts.model or "Unknown model", "Starting...")
+	toast.show_model_toast(job_id, opts.model or "Unknown model", "Starting...")
+
+	-- Write initial header
+	write_string_at_cursor(
+		string.format("\n=== LLM Job %d: %s ===\n\n", job_id, opts.model or "Unknown model"),
+		buffer,
+		ns_id,
+		mark_id,
+		cursor_pos
+	)
 
 	local function parse_and_call(line)
 		local event = line:match("^event: (.+)$")
@@ -480,66 +479,83 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 		end
 		local data_match = line:match("^data: (.+)$")
 		if data_match then
-			local content = handle_data_fn(data_match, cursor_window, cursor_position, curr_event_state, state)
+			local content = handle_data_fn(data_match, buffer, ns_id, mark_id, curr_event_state, state)
 			if content then
 				-- Update toast with latest content
-				toast.update_toast(content)
+				toast.update_toast(job_id, content)
 				return content
 			end
 		end
 	end
 
-	if active_job then
-		active_job:shutdown()
-		active_job = nil
-	end
-
-	active_job = Job:new({
+	local job = Job:new({
 		command = "curl",
 		args = args,
 		on_stdout = function(_, out)
 			local content = parse_and_call(out)
-			-- Append to full output when content received
 			if content then
-				full_output = full_output .. (content or "")
+				full_output = full_output .. content
 			end
 		end,
 		on_stderr = function(_, _) end,
 		on_exit = function()
-			active_job = nil
 			vim.schedule(function()
-				local buffer = vim.api.nvim_get_current_buf()
-				local mark_id = vim.b[buffer].dingllm_mark_id
-				if mark_id then
-					vim.api.nvim_buf_del_extmark(buffer, vim.api.nvim_create_namespace("dingllm_insertion"), mark_id)
-					vim.b[buffer].dingllm_mark_id = nil
-				end
-				-- Save prompt and output to DB
+				-- Add footer
+				write_string_at_cursor(
+					string.format("\n=== LLM Job %d Completed ===\n\n", job_id),
+					buffer,
+					ns_id,
+					mark_id,
+					cursor_pos
+				)
+
+				-- Cleanup
+				vim.api.nvim_buf_del_extmark(buffer, ns_id, mark_id)
+				active_jobs[job_id] = nil
 				save_to_db(opts.system_prompt, prompt, full_output, opts.model)
-				-- Close toast when job completes
-				toast.close_toast()
+				toast.update_job_status(job_id, "Completed")
+
+				-- Close toast if no active jobs
+				if vim.tbl_isempty(active_jobs) then
+					toast.close_toast()
+				end
 			end)
 		end,
 	})
 
-	active_job:start()
+	active_jobs[job_id] = {
+		job = job,
+		ns_id = ns_id,
+		mark_id = mark_id,
+		buffer = buffer,
+		model = opts.model,
+	}
+
+	job:start()
 
 	vim.api.nvim_create_autocmd("User", {
 		group = group,
 		pattern = "DING_LLM_ESCAPE",
 		callback = function()
-			if active_job then
-				active_job:shutdown()
-				print("LLM streaming cancelled")
-				active_job = nil
-				-- Close toast when job is cancelled
-				toast.close_toast()
+			for id, job_data in pairs(active_jobs) do
+				job_data.job:shutdown()
+				write_string_at_cursor(
+					string.format("\n=== LLM Job %d Cancelled ===\n\n", id),
+					job_data.buffer,
+					job_data.ns_id,
+					job_data.mark_id,
+					cursor_pos
+				)
+				vim.api.nvim_buf_del_extmark(job_data.buffer, job_data.ns_id, job_data.mark_id)
+				print("LLM streaming cancelled for job " .. id)
 			end
+			active_jobs = {}
+			toast.close_toast()
 		end,
 	})
 
 	vim.api.nvim_set_keymap("n", "<Esc>", ":doautocmd User DING_LLM_ESCAPE<CR>", { noremap = true, silent = true })
-	return active_job
+	return job_id
 end
 
 -- Apply changes to code selected in visual mode
