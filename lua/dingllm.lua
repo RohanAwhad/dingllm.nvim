@@ -528,12 +528,6 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 			callback = function()
 				for id, job_data in pairs(active_jobs) do
 					job_data.job:shutdown()
-					M.write_string_at_cursor(
-						string.format("\n=== LLM Job %d Cancelled ===\n\n", id),
-						job_data.buffer,
-						job_data.ns_id,
-						job_data.mark_id
-					)
 					vim.api.nvim_buf_del_extmark(job_data.buffer, job_data.ns_id, job_data.mark_id)
 					print("LLM streaming cancelled for job " .. id)
 				end
