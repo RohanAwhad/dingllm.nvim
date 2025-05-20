@@ -120,7 +120,12 @@ function M.show_model_toast(job_id, model, status)
 		}
 
 		-- Set content
-		vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "Job " .. job_id .. " | Model: " .. model })
+		local text = "Job " .. job_id .. " | Model: " .. model
+		if #text > TOAST_WIDTH then
+			text = string.sub(text, 1, TOAST_WIDTH - 3) .. "..."
+		end
+
+		vim.api.nvim_buf_set_lines(buf, 0, 1, false, { text })
 		-- vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "Status: " .. status })
 
 		-- Set highlights

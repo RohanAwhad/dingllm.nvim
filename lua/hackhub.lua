@@ -71,6 +71,9 @@ local function process_data(err, data)
 		-- Handle callbacks
 		if callback_id > 0 and callback_table[callback_id] then
 			callback_table[callback_id](result)
+		end
+
+		if result.status or result.error then
 			callback_table[callback_id] = nil
 		end
 	end
@@ -159,6 +162,31 @@ function M.apply_changes(changes, callback)
 	send_message({
 		command = "apply_changes",
 		changes = changes,
+	})
+end
+
+-- Run tests
+function M.run_tests(callback)
+	if not initialized or not job_pid then
+		error("Service not initialized")
+	end
+
+	callback_id = callback_id + 1
+
+	-- Special handling for test streaming
+	callback_table[callback_id] = function(result)
+		if callback then
+			callback(result)
+
+			-- Only remove the callback when we receive the final message
+			if result.status then
+				callback_table[callback_id] = nil
+			end
+		end
+	end
+
+	send_message({
+		command = "test",
 	})
 end
 
@@ -403,37 +431,3 @@ Notice how in all of the examples, no comments were added. Do not do this unless
 ]]
 
 return M
-
--- Usage example:
---
--- ```lua
--- local hackhub = require("hackhub")
---
--- -- Start the service
--- hackhub.start("/path/to/your/project")
---
--- -- Search for a pattern
--- hackhub.search("myFunction", 10, function(result)
---   if result.status == "success" then
---     print("Found " .. result.total_matches .. " matches")
---     for _, match in ipairs(result.matches) do
---       print(match.file)
---     end
---   else
---     print("Error: " .. (result.error or "Unknown error"))
---   end
--- end)
---
--- -- Apply changes
--- local changes = "```path/to/file.py\n<<<<<<< SEARCH\nold code\n=======\nnew code\n>>>>>>> REPLACE\n```"
--- hackhub.apply_changes(changes, function(result)
---   if result.status == "success" then
---     print("Changes applied successfully")
---   else
---     print("Error applying changes: " .. (result.error or "Unknown error"))
---   end
--- end)
---
--- -- Shutdown when done
--- hackhub.shutdown()
--- ```

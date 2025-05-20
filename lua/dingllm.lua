@@ -553,8 +553,57 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	return job_id
 end
 
+-- Run tests and stream output into the editor
+function M.run_hackhub_tests()
+    if not hackhub.is_running() then
+        print("HackHub is not running. Starting...")
+        init_hackhub()
+
+        -- Give hackhub a moment to initialize
+        vim.defer_fn(function()
+            if hackhub.is_running() then
+                M.run_tests()
+            else
+                print("Failed to start HackHub")
+            end
+        end, 1000)
+    else
+        M.run_tests()
+    end
+end
+
+-- Helper function to actually run the tests and stream the output
+function M.run_tests()
+    local buffer = vim.api.nvim_get_current_buf()
+    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+    local original_row = cursor_pos[1] - 1
+    local original_col = cursor_pos[2]
+
+    -- Create namespace and mark for this test run
+    local ns_id = vim.api.nvim_create_namespace("dingllm_test_run")
+    local mark_id = vim.api.nvim_buf_set_extmark(buffer, ns_id, original_row, original_col, {})
+
+    -- Write test run header
+    M.write_string_at_cursor("\n=== Test Run Started ===\n\n", buffer, ns_id, mark_id)
+
+    hackhub.run_tests(function(result)
+        if result.type == "stdout" then
+            M.write_string_at_cursor("[stdout] " .. result.output .. "\n", buffer, ns_id, mark_id)
+        elseif result.type == "stderr" then
+            M.write_string_at_cursor("[stderr] " .. result.output .. "\n", buffer, ns_id, mark_id)
+        elseif result.status then
+            local message = "\n=== Test Run Completed with code " .. (result.return_code or "unknown") .. " ===\n"
+            M.write_string_at_cursor(message, buffer, ns_id, mark_id)
+        elseif result.error then
+            M.write_string_at_cursor("\n=== Test Run Failed: " .. result.error .. " ===\n", buffer, ns_id, mark_id)
+        end
+    end)
+
+end
+
 -- Apply changes to code selected in visual mode
 function M.apply_hackhub_changes()
+
 	local visual_text = M.get_visual_selection()
 	if not visual_text or #visual_text == 0 then
 		print("No text selected")
