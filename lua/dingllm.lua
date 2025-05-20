@@ -317,13 +317,13 @@ function M.handle_anthropic_spec_data(data_stream, buffer, ns_id, mark_id, event
 end
 
 function M.handle_openai_spec_data(data_stream, buffer, ns_id, mark_id, event_state, state)
-	local content = nil
+	local content
 	if data_stream:match('"delta":') then
 		local json = vim.json.decode(data_stream)
 		if not state.message_start then
-			content = "\n=== Assistant "
+			content = "=== Assistant Response"
 			if json.id then
-				content = content .. "Response ID: " .. json.id
+				content = content .. " ID: " .. json.id
 			end
 			content = content .. " Start ===\n\n"
 			M.write_string_at_cursor(content, buffer, ns_id, mark_id)
@@ -332,9 +332,21 @@ function M.handle_openai_spec_data(data_stream, buffer, ns_id, mark_id, event_st
 
 		if json.choices and json.choices[1] and json.choices[1].delta then
 			content = json.choices[1].delta.content
-			if content then
+			local reasoning = json.choices[1].delta.reasoning
+
+			if content and type(content) == "string" and content ~= "" then
+				-- First content after reasoning - add 2 newlines
+				if not (state.reasoning_complete or state.added_separator) then
+					M.write_string_at_cursor("\n\n=== THINKING END ===\n\n", buffer, ns_id, mark_id)
+					state.added_separator = true
+				end
 				M.write_string_at_cursor(content, buffer, ns_id, mark_id)
+				state.reasoning_complete = true
 				return content
+			elseif reasoning and type(reasoning) == "string" then
+				M.write_string_at_cursor(reasoning, buffer, ns_id, mark_id)
+				state.added_separator = false -- Reset for next reasoning block
+				return reasoning
 			end
 		end
 	end
@@ -431,7 +443,6 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	next_job_id = next_job_id + 1
 
 	local full_output = ""
-	local toast = require("toast")
 	local buffer = vim.api.nvim_get_current_buf()
 	local cursor_pos = vim.api.nvim_win_get_cursor(0)
 	local original_row = cursor_pos[1] - 1
