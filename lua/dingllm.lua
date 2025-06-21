@@ -68,13 +68,6 @@ function M.expand_glob_pattern(pattern)
 		end
 	end
 
-	-- Print all files joined with newlines in a single call
-	if #files > 0 then
-		print(table.concat(files, " | "))
-	else
-		print("No files found matching pattern: " .. pattern)
-	end
-
 	return files
 end
 
@@ -178,6 +171,40 @@ function M.get_visual_selection()
 	end
 end
 
+function M.make_openai_responses_spec_curl_args(opts, prompt, system_prompt)
+	local url = opts.url
+	local data = {
+		instructions = system_prompt,
+		input = prompt,
+		model = opts.model,
+		tools = opts.tools or nil,
+		stream = true,
+		store = false,
+		max_infer_iters = opts.max_infer_iters or 10,
+	}
+
+	if opts.think then
+		data.max_tokens = 40000
+		data.thinking = { type = "enabled", budget_tokens = 32000 } -- this is bad. doesn't follow system_prompt
+	else
+		data.max_tokens = 8192
+	end
+
+	local args = {
+		"-N",
+		"-X",
+		"POST",
+		"-H",
+		"accept:application/json",
+		"-H",
+		"Content-Type: application/json",
+		"-d",
+		vim.json.encode(data),
+	}
+	table.insert(args, url)
+	return args
+end
+
 function M.make_anthropic_spec_curl_args(opts, prompt, system_prompt)
 	local url = opts.url
 	local api_key = opts.api_key_name and get_api_key(opts.api_key_name)
@@ -209,13 +236,27 @@ end
 function M.make_openai_spec_curl_args(opts, prompt, system_prompt)
 	local url = opts.url
 	local api_key = opts.api_key_name and get_api_key(opts.api_key_name)
+	local role = "system"
+	if opts.model == "o3" then
+		role = "developer"
+	end
 	local data = {
-		messages = { { role = "system", content = system_prompt }, { role = "user", content = prompt } },
+		messages = { { role = role, content = system_prompt }, { role = "user", content = prompt } },
 		model = opts.model,
-		temperature = 0.7,
 		stream = true,
-		max_tokens = opts.max_tokens or 4096,
 	}
+
+	if opts.model == "o3" then
+		data.reasoning_effort = "high"
+		data.response_format = { type = "text" }
+		-- data.max_completion_tokens = opts.max_tokens or 4096
+	else
+		data.temperature = 0.7
+		data.max_tokens = opts.max_tokens or 4096
+	end
+
+	-- print(vim.json.encode(data))
+
 	local args = { "-N", "-X", "POST", "-H", "Content-Type: application/json", "-d", vim.json.encode(data) }
 	if api_key then
 		table.insert(args, "-H")
@@ -293,17 +334,17 @@ function M.handle_anthropic_spec_data(data_stream, buffer, ns_id, mark_id, event
 		-- log reasoning output
 		if json.delta and json.delta.thinking then
 			content = json.delta.thinking
-			M.write_string_at_cursor(content, buffer, ns_id, mark_id)
-			state.added_separator = false -- Reset for next reasoning block
+			-- M.write_string_at_cursor(content, buffer, ns_id, mark_id)
+			-- state.added_separator = false -- Reset for next reasoning block
 			return content
 		end
 
 		-- log actual output
 		if json.delta and json.delta.text then
-			if not (state.reasoning_complete or state.added_separator) then
-				M.write_string_at_cursor("\n\n=== THINKING END ===\n\n", buffer, ns_id, mark_id)
-				state.added_separator = true
-			end
+			-- if not (state.reasoning_complete or state.added_separator) then
+			-- 	M.write_string_at_cursor("\n\n=== THINKING END ===\n\n", buffer, ns_id, mark_id)
+			-- 	state.added_separator = true
+			-- end
 			content = json.delta.text
 			M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 			state.reasoning_complete = true
@@ -311,6 +352,34 @@ function M.handle_anthropic_spec_data(data_stream, buffer, ns_id, mark_id, event
 		end
 	end
 	if event_state == "message_stop" then
+		content = "\n\n=== Assistant Response End ===\n\n"
+		M.write_string_at_cursor(content, buffer, ns_id, mark_id)
+	end
+end
+
+function M.handle_openai_responses_spec_data(data_stream, buffer, ns_id, mark_id, event_state, state)
+	local content
+	local json = vim.json.decode(data_stream)
+	if not state.message_start then
+		content = "=== Assistant Response"
+		if json.response and json.response.id then
+			content = content .. " ID: " .. json.response.id
+		end
+		content = content .. " Start ===\n\n"
+		M.write_string_at_cursor(content, buffer, ns_id, mark_id)
+		state.message_start = true
+	end
+
+	if json.type and json.type == "response.output_text.delta" then
+		local content = json.delta
+		if content and type(content) == "string" and content ~= "" then
+			M.write_string_at_cursor(content, buffer, ns_id, mark_id)
+			state.reasoning_complete = true
+			return content
+		end
+	end
+
+	if json.type and json.type == "response.completed" then
 		content = "\n\n=== Assistant Response End ===\n\n"
 		M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 	end
@@ -335,17 +404,17 @@ function M.handle_openai_spec_data(data_stream, buffer, ns_id, mark_id, event_st
 			local reasoning = json.choices[1].delta.reasoning
 
 			if content and type(content) == "string" and content ~= "" then
-				-- First content after reasoning - add 2 newlines
-				if not (state.reasoning_complete or state.added_separator) then
-					M.write_string_at_cursor("\n\n=== THINKING END ===\n\n", buffer, ns_id, mark_id)
-					state.added_separator = true
-				end
+				-- -- First content after reasoning - add 2 newlines
+				-- if not (state.reasoning_complete or state.added_separator) then
+				-- 	M.write_string_at_cursor("\n\n=== THINKING END ===\n\n", buffer, ns_id, mark_id)
+				-- 	state.added_separator = true
+				-- end
 				M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 				state.reasoning_complete = true
 				return content
 			elseif reasoning and type(reasoning) == "string" then
-				M.write_string_at_cursor(reasoning, buffer, ns_id, mark_id)
-				state.added_separator = false -- Reset for next reasoning block
+				-- M.write_string_at_cursor(reasoning, buffer, ns_id, mark_id)
+				-- state.added_separator = false -- Reset for next reasoning block
 				return reasoning
 			end
 		end
@@ -386,15 +455,15 @@ function M.handle_deepseek_reasoner_spec_data(data_stream, buffer, ns_id, mark_i
 
 			if content and type(content) == "string" then
 				-- First content after reasoning - add 2 newlines
-				if not (state.reasoning_complete or state.added_separator) then
-					M.write_string_at_cursor("\n\n=== THINKING END ===\n\n", buffer, ns_id, mark_id)
-					state.added_separator = true
-				end
+				-- if not (state.reasoning_complete or state.added_separator) then
+				-- 	M.write_string_at_cursor("\n\n=== THINKING END ===\n\n", buffer, ns_id, mark_id)
+				-- 	state.added_separator = true
+				-- end
 				M.write_string_at_cursor(content, buffer, ns_id, mark_id)
 				state.reasoning_complete = true
 				return content
 			elseif reasoning and type(reasoning) == "string" then
-				M.write_string_at_cursor(reasoning, buffer, ns_id, mark_id)
+				-- M.write_string_at_cursor(reasoning, buffer, ns_id, mark_id)
 				state.added_separator = false -- Reset for next reasoning block
 				return reasoning
 			end
@@ -555,55 +624,53 @@ end
 
 -- Run tests and stream output into the editor
 function M.run_hackhub_tests()
-    if not hackhub.is_running() then
-        print("HackHub is not running. Starting...")
-        init_hackhub()
+	if not hackhub.is_running() then
+		print("HackHub is not running. Starting...")
+		init_hackhub()
 
-        -- Give hackhub a moment to initialize
-        vim.defer_fn(function()
-            if hackhub.is_running() then
-                M.run_tests()
-            else
-                print("Failed to start HackHub")
-            end
-        end, 1000)
-    else
-        M.run_tests()
-    end
+		-- Give hackhub a moment to initialize
+		vim.defer_fn(function()
+			if hackhub.is_running() then
+				M.run_tests()
+			else
+				print("Failed to start HackHub")
+			end
+		end, 1000)
+	else
+		M.run_tests()
+	end
 end
 
 -- Helper function to actually run the tests and stream the output
 function M.run_tests()
-    local buffer = vim.api.nvim_get_current_buf()
-    local cursor_pos = vim.api.nvim_win_get_cursor(0)
-    local original_row = cursor_pos[1] - 1
-    local original_col = cursor_pos[2]
+	local buffer = vim.api.nvim_get_current_buf()
+	local cursor_pos = vim.api.nvim_win_get_cursor(0)
+	local original_row = cursor_pos[1] - 1
+	local original_col = cursor_pos[2]
 
-    -- Create namespace and mark for this test run
-    local ns_id = vim.api.nvim_create_namespace("dingllm_test_run")
-    local mark_id = vim.api.nvim_buf_set_extmark(buffer, ns_id, original_row, original_col, {})
+	-- Create namespace and mark for this test run
+	local ns_id = vim.api.nvim_create_namespace("dingllm_test_run")
+	local mark_id = vim.api.nvim_buf_set_extmark(buffer, ns_id, original_row, original_col, {})
 
-    -- Write test run header
-    M.write_string_at_cursor("\n=== Test Run Started ===\n\n", buffer, ns_id, mark_id)
+	-- Write test run header
+	M.write_string_at_cursor("\n=== Test Run Started ===\n\n", buffer, ns_id, mark_id)
 
-    hackhub.run_tests(function(result)
-        if result.type == "stdout" then
-            M.write_string_at_cursor("[stdout] " .. result.output .. "\n", buffer, ns_id, mark_id)
-        elseif result.type == "stderr" then
-            M.write_string_at_cursor("[stderr] " .. result.output .. "\n", buffer, ns_id, mark_id)
-        elseif result.status then
-            local message = "\n=== Test Run Completed with code " .. (result.return_code or "unknown") .. " ===\n"
-            M.write_string_at_cursor(message, buffer, ns_id, mark_id)
-        elseif result.error then
-            M.write_string_at_cursor("\n=== Test Run Failed: " .. result.error .. " ===\n", buffer, ns_id, mark_id)
-        end
-    end)
-
+	hackhub.run_tests(function(result)
+		if result.type == "stdout" then
+			M.write_string_at_cursor("[stdout] " .. result.output .. "\n", buffer, ns_id, mark_id)
+		elseif result.type == "stderr" then
+			M.write_string_at_cursor("[stderr] " .. result.output .. "\n", buffer, ns_id, mark_id)
+		elseif result.status then
+			local message = "\n=== Test Run Completed with code " .. (result.return_code or "unknown") .. " ===\n"
+			M.write_string_at_cursor(message, buffer, ns_id, mark_id)
+		elseif result.error then
+			M.write_string_at_cursor("\n=== Test Run Failed: " .. result.error .. " ===\n", buffer, ns_id, mark_id)
+		end
+	end)
 end
 
 -- Apply changes to code selected in visual mode
 function M.apply_hackhub_changes()
-
 	local visual_text = M.get_visual_selection()
 	if not visual_text or #visual_text == 0 then
 		print("No text selected")
