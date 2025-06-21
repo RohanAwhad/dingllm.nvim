@@ -1,0 +1,46 @@
+name: Feature request
+description: Suggest an idea for this project
+labels: ["enhancement"]
+body:
+- type: textarea
+  id: user-role
+  attributes:
+    label: Who is this feature being built for?
+    description: >
+      A clear and concise user role. Ex: A researcher
+  validations:
+    required: true
+
+- type: textarea
+  id: problem-definition
+  attributes:
+    label: Problem Definition
+    description: >
+      Write a 1-sentence problem statement: "A [user role] needs [X] to achieve [Y] because [Z]." Ex: A researcher needs quick PDF summarization to avoid manual skimming because they process 50+ papers each day.
+  validations:
+    required: true
+
+- type: textarea
+  id: feature-pitch
+  attributes:
+    label: 🚀 Describe the new functionality needed
+    description: >
+      A clear and concise description of _what_ needs to be built. Ex: Needs quick PDF summarization
+  validations:
+    required: true
+
+- type: textarea
+  id: feature-motivation
+  attributes:
+    label: Why is this needed? What if we don't build it?
+    description: >
+      A clear and concise description of what you want to happen.
+  validations:
+    required: true
+
+- type: textarea
+  id: other-thoughts
+  attributes:
+    label: Other thoughts
+    description: >
+      Add any other context or screenshots about the feature request here.
