@@ -725,4 +725,184 @@ function M.get_docstrings()
 	return table.concat(docstrings_table, "\n")
 end
 
+-- Buzz LLM
+
+function M.make_buzzllm_args(opts, prompt, system_prompt)
+	local args = {
+		"-S", -- SSE mode
+		opts.model,
+		opts.url,
+		prompt,
+		"--provider",
+		opts.provider,
+	}
+
+	if opts.api_key_name then
+		table.insert(args, "--api-key-name")
+		table.insert(args, opts.api_key_name)
+	end
+
+	if system_prompt and system_prompt ~= "" then
+		table.insert(args, "--system")
+		table.insert(args, system_prompt)
+	end
+
+	if opts.think then
+		table.insert(args, "--think")
+	end
+
+	return args
+end
+
+function M.handle_buzzllm_data(data_stream, buffer, ns_id, mark_id, event_state, state)
+	local content
+
+	local json = vim.json.decode(data_stream)
+
+	if event_state == "response_start" and not state.message_start then
+		content = "=== Assistant Response"
+		if json.id and json.id ~= "" then
+			content = content .. " ID: " .. json.id
+		end
+		content = content .. " Start ===\n\n"
+		M.write_string_at_cursor(content, buffer, ns_id, mark_id)
+		state.message_start = true
+	end
+
+	if event_state == "reasoning_content" and json.delta then
+		return json.delta
+	end
+
+	if event_state == "tool_call" and json.delta then
+		return json.delta
+	end
+
+	if event_state == "output_text" and json.delta then
+		content = json.delta
+		if content and type(content) == "string" and content ~= "" then
+			M.write_string_at_cursor(content, buffer, ns_id, mark_id)
+			return content
+		end
+	end
+
+	if event_state == "response_end" then
+		content = "\n\n=== Assistant Response End ===\n\n"
+		M.write_string_at_cursor(content, buffer, ns_id, mark_id)
+	end
+end
+
+function M.invoke_buzzllm(opts)
+	local job_id = next_job_id
+	next_job_id = next_job_id + 1
+
+	local full_output = ""
+	local buffer = vim.api.nvim_get_current_buf()
+	local cursor_pos = vim.api.nvim_win_get_cursor(0)
+	local original_row = cursor_pos[1] - 1
+	local original_col = cursor_pos[2]
+
+	-- Create unique namespace and mark for this job
+	local ns_id = vim.api.nvim_create_namespace("dingllm_job_" .. job_id)
+	local mark_id = vim.api.nvim_buf_set_extmark(buffer, ns_id, original_row, original_col, {})
+
+	local prompt = get_prompt(opts)
+	local system_prompt = opts.system_prompt
+
+	local args = M.make_buzzllm_args(opts, prompt, system_prompt)
+	local curr_event_state = nil
+	local state = { added_separator = false, reasoning_complete = false, message_start = false }
+
+	-- Show initial toast with model info
+	toast.show_model_toast(job_id, opts.model or "Unknown model", "Starting...")
+
+	local function parse_and_call(line)
+		local event = line:match("^event: (.+)$")
+		if event then
+			curr_event_state = event
+			return
+		end
+		local data_match = line:match("^data: (.+)$")
+		if data_match then
+			local content = M.handle_buzzllm_data(data_match, buffer, ns_id, mark_id, curr_event_state, state)
+			if content then
+				-- Update toast with latest content
+				toast.update_toast(job_id, content)
+				return content
+			end
+		end
+	end
+
+	local job = Job:new({
+		command = "buzzllm",
+		args = args,
+		on_stdout = function(_, out)
+			local content = parse_and_call(out)
+			if content then
+				full_output = full_output .. content
+			end
+		end,
+		on_stderr = function(_, err)
+			-- Log errors but continue processing
+			if err and err ~= "" then
+				vim.schedule(function()
+					vim.api.nvim_echo({ { "Error in job " .. job_id .. ": " .. err, "ErrorMsg" } }, false, {})
+				end)
+			end
+		end,
+		on_exit = function(_, code)
+			vim.schedule(function()
+				-- Cleanup
+				vim.api.nvim_buf_del_extmark(buffer, ns_id, mark_id)
+				active_jobs[job_id] = nil
+				save_to_db(opts.system_prompt, prompt, full_output, opts.model)
+
+				-- Close toast immediately if successful, otherwise show failed status
+				if code == 0 then
+					toast.close_job_toast(job_id)
+				else
+					toast.update_job_status(job_id, "Failed")
+				end
+
+				-- Close toast if no active jobs (only needed for failed cases)
+				if vim.tbl_isempty(active_jobs) then
+					toast.close_toast()
+				end
+			end)
+		end,
+	})
+
+	active_jobs[job_id] = {
+		job = job,
+		ns_id = ns_id,
+		mark_id = mark_id,
+		buffer = buffer,
+		model = opts.model,
+	}
+
+	job:start()
+
+	-- Only set up escape handler if this is the first job
+	if vim.tbl_count(active_jobs) == 1 then
+		vim.api.nvim_clear_autocmds({ group = group })
+
+		vim.api.nvim_create_autocmd("User", {
+			group = group,
+			pattern = "DING_LLM_ESCAPE",
+			callback = function()
+				for id, job_data in pairs(active_jobs) do
+					job_data.job:shutdown()
+					vim.api.nvim_buf_del_extmark(job_data.buffer, job_data.ns_id, job_data.mark_id)
+					print("LLM streaming cancelled for job " .. id)
+				end
+				active_jobs = {}
+				toast.close_toast()
+			end,
+		})
+
+		vim.api.nvim_set_keymap("n", "<Esc>", ":doautocmd User DING_LLM_ESCAPE<CR>", { noremap = true, silent = true })
+	end
+
+	return job_id
+end
+
 return M
