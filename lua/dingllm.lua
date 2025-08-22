@@ -1,7 +1,7 @@
 local M = {}
 local Job = require("plenary.job")
 local sqlite = require("sqlite")
-local hackhub = require("hackhub")
+-- local hackhub = require("hackhub")
 local toast = require("toast")
 local ding_path = vim.fn.expand("~/.dingllm")
 
@@ -13,26 +13,26 @@ end
 toast.setup()
 
 -- Start hackhub with the current project directory
-local function init_hackhub()
-	local project_dir = vim.fn.getcwd()
-	if project_dir and project_dir ~= "" then
-		hackhub.start(project_dir)
-	end
-end
+-- local function init_hackhub()
+-- 	local project_dir = vim.fn.getcwd()
+-- 	if project_dir and project_dir ~= "" then
+-- 		hackhub.start(project_dir)
+-- 	end
+-- end
 
 -- Initialize hackhub when dingllm is loaded
-init_hackhub()
-M.hackhub_prompt = hackhub.system_prompt
+-- init_hackhub()
+-- M.hackhub_prompt = hackhub.system_prompt
 
--- Set up autocmd to shut down hackhub when Neovim exits
-vim.api.nvim_create_autocmd({ "VimLeavePre", "VimLeave" }, {
-	callback = function()
-		if hackhub.is_running() then
-			hackhub.shutdown()
-		end
-	end,
-	group = vim.api.nvim_create_augroup("HackHubCleanup", { clear = true }),
-})
+-- -- Set up autocmd to shut down hackhub when Neovim exits
+-- vim.api.nvim_create_autocmd({ "VimLeavePre", "VimLeave" }, {
+-- 	callback = function()
+-- 		if hackhub.is_running() then
+-- 			hackhub.shutdown()
+-- 		end
+-- 	end,
+-- 	group = vim.api.nvim_create_augroup("HackHubCleanup", { clear = true }),
+-- })
 
 local function save_to_db(instruction, prompt, output, model)
 	local db_path = vim.fn.expand("~/.dingllm/calls.db")
@@ -622,54 +622,235 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	return job_id
 end
 
--- Run tests and stream output into the editor
-function M.run_hackhub_tests()
-	if not hackhub.is_running() then
-		print("HackHub is not running. Starting...")
-		init_hackhub()
+-- -- Run tests and stream output into the editor
+-- function M.run_hackhub_tests()
+-- 	if not hackhub.is_running() then
+-- 		print("HackHub is not running. Starting...")
+-- 		init_hackhub()
+--
+-- 		-- Give hackhub a moment to initialize
+-- 		vim.defer_fn(function()
+-- 			if hackhub.is_running() then
+-- 				M.run_tests()
+-- 			else
+-- 				print("Failed to start HackHub")
+-- 			end
+-- 		end, 1000)
+-- 	else
+-- 		M.run_tests()
+-- 	end
+-- end
 
-		-- Give hackhub a moment to initialize
-		vim.defer_fn(function()
-			if hackhub.is_running() then
-				M.run_tests()
-			else
-				print("Failed to start HackHub")
-			end
-		end, 1000)
-	else
-		M.run_tests()
-	end
-end
-
--- Helper function to actually run the tests and stream the output
-function M.run_tests()
-	local buffer = vim.api.nvim_get_current_buf()
-	local cursor_pos = vim.api.nvim_win_get_cursor(0)
-	local original_row = cursor_pos[1] - 1
-	local original_col = cursor_pos[2]
-
-	-- Create namespace and mark for this test run
-	local ns_id = vim.api.nvim_create_namespace("dingllm_test_run")
-	local mark_id = vim.api.nvim_buf_set_extmark(buffer, ns_id, original_row, original_col, {})
-
-	-- Write test run header
-	M.write_string_at_cursor("\n=== Test Run Started ===\n\n", buffer, ns_id, mark_id)
-
-	hackhub.run_tests(function(result)
-		if result.type == "stdout" then
-			M.write_string_at_cursor("[stdout] " .. result.output .. "\n", buffer, ns_id, mark_id)
-		elseif result.type == "stderr" then
-			M.write_string_at_cursor("[stderr] " .. result.output .. "\n", buffer, ns_id, mark_id)
-		elseif result.status then
-			local message = "\n=== Test Run Completed with code " .. (result.return_code or "unknown") .. " ===\n"
-			M.write_string_at_cursor(message, buffer, ns_id, mark_id)
-		elseif result.error then
-			M.write_string_at_cursor("\n=== Test Run Failed: " .. result.error .. " ===\n", buffer, ns_id, mark_id)
-		end
-	end)
-end
+-- -- Helper function to actually run the tests and stream the output
+-- function M.run_tests()
+-- 	local buffer = vim.api.nvim_get_current_buf()
+-- 	local cursor_pos = vim.api.nvim_win_get_cursor(0)
+-- 	local original_row = cursor_pos[1] - 1
+-- 	local original_col = cursor_pos[2]
+--
+-- 	-- Create namespace and mark for this test run
+-- 	local ns_id = vim.api.nvim_create_namespace("dingllm_test_run")
+-- 	local mark_id = vim.api.nvim_buf_set_extmark(buffer, ns_id, original_row, original_col, {})
+--
+-- 	-- Write test run header
+-- 	M.write_string_at_cursor("\n=== Test Run Started ===\n\n", buffer, ns_id, mark_id)
+--
+-- 	hackhub.run_tests(function(result)
+-- 		if result.type == "stdout" then
+-- 			M.write_string_at_cursor("[stdout] " .. result.output .. "\n", buffer, ns_id, mark_id)
+-- 		elseif result.type == "stderr" then
+-- 			M.write_string_at_cursor("[stderr] " .. result.output .. "\n", buffer, ns_id, mark_id)
+-- 		elseif result.status then
+-- 			local message = "\n=== Test Run Completed with code " .. (result.return_code or "unknown") .. " ===\n"
+-- 			M.write_string_at_cursor(message, buffer, ns_id, mark_id)
+-- 		elseif result.error then
+-- 			M.write_string_at_cursor("\n=== Test Run Failed: " .. result.error .. " ===\n", buffer, ns_id, mark_id)
+-- 		end
+-- 	end)
+-- end
 
 -- Apply changes to code selected in visual mode
+local function apply_all(changes, project_path)
+	-- Extract code blocks
+	local blocks = {}
+
+	-- Parse code blocks manually since Lua patterns are limited
+	local pos = 1
+	while pos <= #changes do
+		local start_marker = string.find(changes, "```", pos, true)
+		if not start_marker then
+			break
+		end
+
+		local newline_pos = string.find(changes, "\n", start_marker + 3, true)
+		if not newline_pos then
+			break
+		end
+
+		local file_path = string.sub(changes, start_marker + 3, newline_pos - 1):match("^%s*(.-)%s*$")
+
+		local end_marker = string.find(changes, "\n```", newline_pos, true)
+		if not end_marker then
+			break
+		end
+
+		local content = string.sub(changes, newline_pos + 1, end_marker - 1)
+		table.insert(blocks, { file_path, content })
+		pos = end_marker + 4
+	end
+
+	if #blocks == 0 then
+		vim.notify("No code blocks found in the changes", vim.log.levels.WARN)
+		return 1
+	end
+
+	vim.notify("Found " .. #blocks .. " code blocks to process", vim.log.levels.INFO)
+
+	local files_to_modify = {}
+	local files_to_create = {}
+
+	-- Helper function for literal string replacement
+	local function string_replace(str, search, replace)
+		local result = ""
+		local start_pos = 1
+
+		while true do
+			local found_pos = string.find(str, search, start_pos, true)
+			if not found_pos then
+				result = result .. string.sub(str, start_pos)
+				break
+			end
+			result = result .. string.sub(str, start_pos, found_pos - 1) .. replace
+			start_pos = found_pos + #search
+		end
+		return result
+	end
+
+	-- First pass: validate and categorize blocks
+	for _, block in ipairs(blocks) do
+		local file_path, content = block[1], block[2]
+
+		if file_path == "" then
+			vim.notify("Skipping block with no file path", vim.log.levels.WARN)
+			return 1
+		end
+
+		local clean_path = file_path:gsub("^/+", "")
+		local full_file_path = vim.fn.resolve(project_path .. "/" .. clean_path)
+
+		-- Parse search/replace blocks
+		local search_replace_blocks = {}
+		local search_pos = 1
+
+		while search_pos <= #content do
+			local search_start = string.find(content, "<<<<<<< SEARCH\n", search_pos, true)
+			if not search_start then
+				break
+			end
+
+			local equals_pos = string.find(content, "\n=======\n", search_start + 15, true)
+			if not equals_pos then
+				break
+			end
+
+			local replace_end = string.find(content, "\n>>>>>>> REPLACE", equals_pos + 9, true)
+			if not replace_end then
+				break
+			end
+
+			local search_text = string.sub(content, search_start + 15, equals_pos - 1)
+			local replace_text = string.sub(content, equals_pos + 9, replace_end - 1)
+
+			table.insert(search_replace_blocks, { search_text, replace_text })
+			search_pos = replace_end + 16
+		end
+
+		if #search_replace_blocks == 0 then
+			-- Check if file exists to determine if we should create it
+			if vim.fn.filereadable(full_file_path) == 1 then
+				vim.notify(
+					"No search/replace blocks found in block for existing file " .. file_path,
+					vim.log.levels.WARN
+				)
+				return 1
+			end
+			files_to_create[full_file_path] = content
+		else
+			-- Validate existing file for modification
+			if vim.fn.filereadable(full_file_path) == 0 then
+				vim.notify("No file exists at: " .. full_file_path, vim.log.levels.WARN)
+				return 1
+			end
+			if not files_to_modify[full_file_path] then
+				files_to_modify[full_file_path] = {}
+			end
+			vim.list_extend(files_to_modify[full_file_path], search_replace_blocks)
+		end
+	end
+
+	-- Create new files first
+	for file_path, content in pairs(files_to_create) do
+		local dir = vim.fn.fnamemodify(file_path, ":h")
+		if vim.fn.mkdir(dir, "p") == 0 then
+			vim.notify("Error creating directory for " .. file_path, vim.log.levels.ERROR)
+			return 1
+		end
+
+		local lines = vim.split(content, "\n", { plain = true })
+		if vim.fn.writefile(lines, file_path) ~= 0 then
+			vim.notify("Error creating file " .. file_path, vim.log.levels.ERROR)
+			return 1
+		end
+		vim.notify("Created new file: " .. file_path, vim.log.levels.INFO)
+	end
+
+	-- Read original content of all files and prepare modified versions
+	local original_contents = {}
+	local modified_contents = {}
+
+	for file_path, blocks in pairs(files_to_modify) do
+		local lines = vim.fn.readfile(file_path)
+		if not lines then
+			vim.notify("Error reading " .. file_path, vim.log.levels.ERROR)
+			return 1
+		end
+
+		local original_content = table.concat(lines, "\n")
+		local modified_content = original_content
+
+		for _, block in ipairs(blocks) do
+			local search_text, replace_text = block[1], block[2]
+
+			-- Check if search_text exists in the current content
+			if not string.find(modified_content, search_text, 1, true) then
+				vim.notify("Search pattern not found in " .. file_path .. ": " .. search_text, vim.log.levels.ERROR)
+				return 1
+			end
+			modified_content = string_replace(modified_content, search_text, replace_text)
+		end
+
+		original_contents[file_path] = original_content
+		modified_contents[file_path] = modified_content
+	end
+
+	-- Write all modified contents
+	for file_path, content in pairs(modified_contents) do
+		local lines = vim.split(content, "\n", { plain = true })
+		if vim.fn.writefile(lines, file_path) ~= 0 then
+			vim.notify("Error writing to " .. file_path, vim.log.levels.ERROR)
+			-- Restore all files
+			for path, orig_content in pairs(original_contents) do
+				local orig_lines = vim.split(orig_content, "\n", { plain = true })
+				vim.fn.writefile(orig_lines, path)
+			end
+			return 1
+		end
+	end
+	vim.notify("Changes applied successfully", vim.log.levels.INFO)
+
+	return 0
+end
+
 function M.apply_hackhub_changes()
 	local visual_text = M.get_visual_selection()
 	if not visual_text or #visual_text == 0 then
@@ -678,34 +859,35 @@ function M.apply_hackhub_changes()
 	end
 
 	local changes = table.concat(visual_text, "\n")
+	apply_all(changes, vim.fn.getcwd())
 
-	if not hackhub.is_running() then
-		print("HackHub is not running. Starting...")
-		init_hackhub()
-
-		-- Give hackhub a moment to initialize
-		vim.defer_fn(function()
-			if hackhub.is_running() then
-				M.apply_changes(changes)
-			else
-				print("Failed to start HackHub")
-			end
-		end, 1000)
-	else
-		M.apply_changes(changes)
-	end
+	-- if not hackhub.is_running() then
+	-- 	print("HackHub is not running. Starting...")
+	-- 	init_hackhub()
+	--
+	-- 	-- Give hackhub a moment to initialize
+	-- 	vim.defer_fn(function()
+	-- 		if hackhub.is_running() then
+	-- 			M.apply_changes(changes)
+	-- 		else
+	-- 			print("Failed to start HackHub")
+	-- 		end
+	-- 	end, 1000)
+	-- else
+	-- 	M.apply_changes(changes)
+	-- end
 end
 
 -- Helper function to handle the actual change application
-function M.apply_changes(changes)
-	hackhub.apply_changes(changes, function(result)
-		if result.status == "success" then
-			print("Changes applied successfully")
-		else
-			print("Error applying changes: " .. (result.error or "Unknown error"))
-		end
-	end)
-end
+-- function M.apply_changes(changes)
+-- 	hackhub.apply_changes(changes, function(result)
+-- 		if result.status == "success" then
+-- 			print("Changes applied successfully")
+-- 		else
+-- 			print("Error applying changes: " .. (result.error or "Unknown error"))
+-- 		end
+-- 	end)
+-- end
 
 function M.get_docstrings()
 	local docstrings_path = vim.fn.getcwd() .. "/.dingllm/docstrings.json"

@@ -89,9 +89,9 @@ function M.start(project_path)
 	stderr = ""
 	initialized = false
 
-	local cmd = "/Users/rohan/1_Porn/russ_cox_code_search/master/.venv/bin/python"
+	local cmd = "/Users/rawhad/3_Resources/external_libs/russ_cox_code_search/.venv/bin/python"
 	local args = {
-		"/Users/rohan/1_Porn/russ_cox_code_search/master/main.py",
+		"/Users/rawhad/3_Resources/external_libs/russ_cox_code_search/main.py",
 		project_path,
 	}
 
