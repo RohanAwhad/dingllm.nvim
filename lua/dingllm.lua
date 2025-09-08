@@ -246,13 +246,20 @@ function M.make_openai_spec_curl_args(opts, prompt, system_prompt)
 		stream = true,
 	}
 
-	if opts.model == "o3" then
+	local reasoning_models = {
+		o3 = true,
+		["gpt-5"] = true,
+		["o4-mini"] = true,
+		["o1-pro"] = true,
+		["gpt-5-mini"] = true,
+	}
+
+	if reasoning_models[opts.model] then
 		data.reasoning_effort = "high"
 		data.response_format = { type = "text" }
-		-- data.max_completion_tokens = opts.max_tokens or 4096
 	else
 		data.temperature = 0.7
-		data.max_tokens = opts.max_tokens or 4096
+		data.max_tokens = opts and opts.max_tokens or 4096
 	end
 
 	-- print(vim.json.encode(data))
