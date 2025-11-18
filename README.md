@@ -203,4 +203,4 @@ Add your API keys to your env (export it in zshrc or bashrc)
 
 ### Documentation
 
-read the code dummy
+ummm ... WIP ... meanwhile read the code 
