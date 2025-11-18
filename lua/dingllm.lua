@@ -1,7 +1,6 @@
 local M = {}
 local Job = require("plenary.job")
 local sqlite = require("sqlite")
--- local hackhub = require("hackhub")
 local toast = require("toast")
 local ding_path = vim.fn.expand("~/.dingllm")
 
@@ -12,30 +11,8 @@ end
 -- Initialize toast module
 toast.setup()
 
--- Start hackhub with the current project directory
--- local function init_hackhub()
--- 	local project_dir = vim.fn.getcwd()
--- 	if project_dir and project_dir ~= "" then
--- 		hackhub.start(project_dir)
--- 	end
--- end
-
--- Initialize hackhub when dingllm is loaded
--- init_hackhub()
--- M.hackhub_prompt = hackhub.system_prompt
-
--- -- Set up autocmd to shut down hackhub when Neovim exits
--- vim.api.nvim_create_autocmd({ "VimLeavePre", "VimLeave" }, {
--- 	callback = function()
--- 		if hackhub.is_running() then
--- 			hackhub.shutdown()
--- 		end
--- 	end,
--- 	group = vim.api.nvim_create_augroup("HackHubCleanup", { clear = true }),
--- })
-
 local function save_to_db(instruction, prompt, output, model)
-	local db_path = vim.fn.expand("~/.dingllm/calls.db")
+	local db_path = vim.fn.expand("~/.buzzllm/calls.db")
 	local db = sqlite.new(db_path)
 	db:open()
 	db:eval(
@@ -629,53 +606,6 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 	return job_id
 end
 
--- -- Run tests and stream output into the editor
--- function M.run_hackhub_tests()
--- 	if not hackhub.is_running() then
--- 		print("HackHub is not running. Starting...")
--- 		init_hackhub()
---
--- 		-- Give hackhub a moment to initialize
--- 		vim.defer_fn(function()
--- 			if hackhub.is_running() then
--- 				M.run_tests()
--- 			else
--- 				print("Failed to start HackHub")
--- 			end
--- 		end, 1000)
--- 	else
--- 		M.run_tests()
--- 	end
--- end
-
--- -- Helper function to actually run the tests and stream the output
--- function M.run_tests()
--- 	local buffer = vim.api.nvim_get_current_buf()
--- 	local cursor_pos = vim.api.nvim_win_get_cursor(0)
--- 	local original_row = cursor_pos[1] - 1
--- 	local original_col = cursor_pos[2]
---
--- 	-- Create namespace and mark for this test run
--- 	local ns_id = vim.api.nvim_create_namespace("dingllm_test_run")
--- 	local mark_id = vim.api.nvim_buf_set_extmark(buffer, ns_id, original_row, original_col, {})
---
--- 	-- Write test run header
--- 	M.write_string_at_cursor("\n=== Test Run Started ===\n\n", buffer, ns_id, mark_id)
---
--- 	hackhub.run_tests(function(result)
--- 		if result.type == "stdout" then
--- 			M.write_string_at_cursor("[stdout] " .. result.output .. "\n", buffer, ns_id, mark_id)
--- 		elseif result.type == "stderr" then
--- 			M.write_string_at_cursor("[stderr] " .. result.output .. "\n", buffer, ns_id, mark_id)
--- 		elseif result.status then
--- 			local message = "\n=== Test Run Completed with code " .. (result.return_code or "unknown") .. " ===\n"
--- 			M.write_string_at_cursor(message, buffer, ns_id, mark_id)
--- 		elseif result.error then
--- 			M.write_string_at_cursor("\n=== Test Run Failed: " .. result.error .. " ===\n", buffer, ns_id, mark_id)
--- 		end
--- 	end)
--- end
-
 -- Apply changes to code selected in visual mode
 local function apply_all(changes, project_path)
 	-- Extract code blocks
@@ -867,34 +797,7 @@ function M.apply_hackhub_changes()
 
 	local changes = table.concat(visual_text, "\n")
 	apply_all(changes, vim.fn.getcwd())
-
-	-- if not hackhub.is_running() then
-	-- 	print("HackHub is not running. Starting...")
-	-- 	init_hackhub()
-	--
-	-- 	-- Give hackhub a moment to initialize
-	-- 	vim.defer_fn(function()
-	-- 		if hackhub.is_running() then
-	-- 			M.apply_changes(changes)
-	-- 		else
-	-- 			print("Failed to start HackHub")
-	-- 		end
-	-- 	end, 1000)
-	-- else
-	-- 	M.apply_changes(changes)
-	-- end
 end
-
--- Helper function to handle the actual change application
--- function M.apply_changes(changes)
--- 	hackhub.apply_changes(changes, function(result)
--- 		if result.status == "success" then
--- 			print("Changes applied successfully")
--- 		else
--- 			print("Error applying changes: " .. (result.error or "Unknown error"))
--- 		end
--- 	end)
--- end
 
 function M.get_docstrings()
 	local docstrings_path = vim.fn.getcwd() .. "/.dingllm/docstrings.json"
